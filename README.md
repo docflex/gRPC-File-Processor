@@ -245,3 +245,204 @@ ThreadPoolManager
 MIT License — free to use and extend.
 
 ---
+
+# To Do List
+
+## **1. gRPC Services**
+
+* [ ] Implement `StreamFileOperations` (server streaming)
+* [ ] Implement `UploadFiles` (client streaming)
+* [ ] Implement `LiveFileProcessing` (bidirectional streaming)
+* [ ] Add request validation for all RPCs (check file size, type, operation support)
+* [ ] Support gRPC error handling with meaningful status codes
+
+---
+
+## **2. File Operations / Business Logic**
+
+* [ ] Implement actual **OCR** functionality for PDF and images
+* [ ] Implement **image resizing** logic for JPG, PNG, GIF
+* [ ] Implement **compression** logic (e.g., zip or image compression)
+* [ ] Implement **format conversion** (e.g., PNG → JPG, PDF → TXT)
+* [ ] Implement **file storage** logic (local FS or cloud like S3/MinIO)
+* [ ] Add **metadata extraction** logic (size, type, creation date, EXIF for images)
+* [ ] Add **validation rules** for file type, allowed operations, etc.
+
+---
+
+## **3. Concurrency / Workflow**
+
+* [ ] Finalize `WorkflowExecutorService` integration for all gRPC endpoints
+* [ ] Add error handling for individual `FileTask`s without failing the whole workflow
+* [ ] Add **timeout support** for long-running tasks
+* [ ] Improve **backpressure** handling (queue thresholds, client notifications)
+
+---
+
+## **4. Metrics / Monitoring**
+
+* [ ] Add per-operation metrics (e.g., processing duration per operation type)
+* [ ] Expose metrics via **Prometheus** or **Spring Actuator** (note: actuator endpoint conflict with gRPC)
+* [ ] Track **success/failure rates** per workflow
+
+---
+
+## **5. Spring / Configuration**
+
+* [ ] Make all service properties configurable via `application.properties` (port, thread pool sizes, thresholds)
+* [ ] Enable **hot reload** for config changes without restarting server
+* [ ] Ensure **beans** are properly registered (`ProcessFileService`, `StreamFileOperationsService`, etc.)
+
+---
+
+## **6. Testing**
+
+* [ ] Unit tests for all **FileOperations**
+* [ ] Integration tests for **WorkflowExecutorService**
+* [ ] gRPC end-to-end tests using `grpc-java` or `grpcurl`
+* [ ] Load testing for concurrent workflows
+* [ ] Failure scenario testing (invalid file, large file, network failure)
+
+---
+
+## **7. Documentation**
+
+* [ ] Convert ASCII diagrams to **PlantUML/Mermaid visuals** for README
+* [ ] Document gRPC request/response examples
+* [ ] Document supported file types and operations
+* [ ] Add **contributing guide** if open-source
+
+---
+
+## **8. Future Enhancements / Optional**
+
+* [ ] Add **authentication/authorization** for gRPC endpoints (JWT/mTLS)
+* [ ] Add **persistent storage** for workflow state
+* [ ] Add **distributed workflow support** (Kafka, RabbitMQ, or other queue)
+* [ ] Expose **REST gateway** via `grpc-spring-boot-starter` or `Envoy proxy`
+* [ ] Add **real-time notifications** for live file processing (WebSockets, gRPC streaming)
+
+---
+
+# Milestones
+
+## **Phase 1 — Core Unary File Processing (MVP)**
+
+**Goal:** Get the basic unary RPC (`ProcessFile`) fully functional with core operations.
+
+**Tasks:**
+
+1. Implement all placeholder operations in `ProcessFileService`:
+
+  * Validation
+  * Metadata extraction
+  * Compression
+  * Format conversion
+  * File storage
+2. Ensure `ProcessFileService` is properly registered as a Spring Bean.
+3. Complete the unary gRPC endpoint (`processFile`) in `FileProcessingServiceImpl`.
+4. Add basic unit tests for operations.
+5. Expose basic metrics (`FileProcessingMetrics`) for the unary flow.
+6. Update README with unary RPC usage examples (`grpcurl` commands).
+
+**Milestone Deliverable:**
+✅ Fully functional unary RPC processing files end-to-end with logs, metrics, and error handling.
+
+---
+
+## **Phase 2 — Concurrency & Workflow Management**
+
+**Goal:** Introduce `WorkflowExecutorService` for orchestrating tasks with thread pool management.
+
+**Tasks:**
+
+1. Integrate `WorkflowExecutorService` with `ProcessFileService` for concurrent execution of tasks.
+2. Add `ThreadPoolManager` adaptive thread pool management.
+3. Track per-task metrics in `FileProcessingMetrics`.
+4. Implement error isolation so a failed task does not fail the entire workflow.
+5. Unit tests and integration tests for concurrency handling.
+
+**Milestone Deliverable:**
+✅ Concurrent file processing with metrics, adaptive threads, and task-level isolation.
+
+---
+
+## **Phase 3 — Streaming gRPC Endpoints**
+
+**Goal:** Implement non-unary RPCs for batch and real-time processing.
+
+**Tasks:**
+
+1. Implement `StreamFileOperations` (server streaming).
+2. Implement `UploadFiles` (client streaming).
+3. Implement `LiveFileProcessing` (bidirectional streaming).
+4. Add proper backpressure handling for streaming (queue limits, slow consumers).
+5. Add tests for streaming scenarios.
+
+**Milestone Deliverable:**
+✅ Streaming endpoints functional with concurrency, backpressure, and error handling.
+
+---
+
+## **Phase 4 — Storage, Format, and OCR Enhancements**
+
+**Goal:** Implement full file-processing logic beyond placeholders.
+
+**Tasks:**
+
+1. Implement OCR for PDFs and images.
+2. Implement image resizing and format conversion.
+3. Implement compression (zip, image optimization).
+4. Implement file storage (local, S3, MinIO, or pluggable storage).
+5. Metadata extraction (EXIF, file info, text content).
+
+**Milestone Deliverable:**
+✅ Fully-featured file-processing pipeline for supported file types.
+
+---
+
+## **Phase 5 — Monitoring, Metrics, and Observability**
+
+**Goal:** Make the service observable and production-ready.
+
+**Tasks:**
+
+1. Expose metrics via Spring Actuator or Prometheus.
+2. Track workflow success/failure rates, average task duration.
+3. Add logging with SLF4J/Logback and structured logging.
+4. Optional: gRPC reflection for debugging.
+
+**Milestone Deliverable:**
+✅ Production-grade observability with metrics and logs.
+
+---
+
+## **Phase 6 — Configuration, Security, and Scaling**
+
+**Goal:** Make the service configurable, secure, and horizontally scalable.
+
+**Tasks:**
+
+1. Make thread pool sizes, queue thresholds, and ports configurable via `application.properties` (hot-reloadable).
+2. Add authentication/authorization for gRPC (JWT/mTLS).
+3. Add persistent workflow storage (optional: Redis, DB, or queue for distributed processing).
+4. Add load testing and performance tuning.
+
+**Milestone Deliverable:**
+✅ Configurable, secure, and horizontally scalable file processing service.
+
+---
+
+## **Phase 7 — Optional Enhancements**
+
+**Tasks:**
+
+1. Add REST gateway for external clients.
+2. Add real-time notifications (WebSocket or gRPC streaming).
+3. Add distributed workflow orchestration (Kafka, RabbitMQ, etc.).
+4. Add more file types or operation plugins (extensible architecture).
+
+**Milestone Deliverable:**
+✅ Advanced production-ready features, extensible for future growth.
+
+---
