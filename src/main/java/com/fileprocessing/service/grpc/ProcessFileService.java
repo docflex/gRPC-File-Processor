@@ -8,7 +8,6 @@ import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
 import com.fileprocessing.util.FileOperations;
 import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -104,9 +103,9 @@ public class ProcessFileService {
                 case VALIDATE -> FileOperations.validateFile(file);
                 case METADATA_EXTRACTION -> FileOperations.extractMetadata(file);
                 case OCR_TEXT_EXTRACTION -> FileOperations.performOcr(file);
-                case IMAGE_RESIZE -> FileOperations.resizeImage(file);
+                case IMAGE_RESIZE -> FileOperations.resizeImage(file, 800, 600); // Default max dimensions
                 case FILE_COMPRESSION -> FileOperations.compressFile(file);
-                case FORMAT_CONVERSION -> FileOperations.convertFormat(file);
+                case FORMAT_CONVERSION -> FileOperations.convertFormat(file, "jpg"); // Default format
                 case STORAGE -> FileOperations.storeFile(file);
                 default -> log.warn("Unknown operation: {}, skipping", operation);
             }

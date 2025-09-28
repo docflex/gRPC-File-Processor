@@ -7,6 +7,7 @@ import com.fileprocessing.FileSpec.FileProcessingRequest;
 import com.fileprocessing.FileSpec.FileProcessingSummary;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
+import com.fileprocessing.model.concurrency.FileProcessingMetrics;
 import com.fileprocessing.service.grpc.LiveFileProcessingService;
 import com.fileprocessing.service.grpc.ProcessFileService;
 import com.fileprocessing.service.grpc.StreamFileOperationsService;
@@ -23,6 +24,7 @@ import net.devh.boot.grpc.server.service.GrpcService;
 @RequiredArgsConstructor
 public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
 
+    private final FileProcessingMetrics processingMetrics;
     private final ProcessFileService processFileService;
 //    private final StreamFileOperationsService streamFileOperationsService;
 //    private final UploadFilesService uploadFilesService;
@@ -39,6 +41,9 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
      */
     @Override
     public void processFile(FileProcessingRequest fileProcessingRequest, StreamObserver<FileProcessingSummary> responseObserver) {
+        long startTime = System.currentTimeMillis();
+        processingMetrics.incrementActiveTasks(); // Increment active tasks
+
         try {
             FileProcessingRequestModel fileProcessingRequestModel = ProtoConverter.toInternalModel(fileProcessingRequest);
             FileProcessingSummaryModel fileProcessingSummaryModel = processFileService.processFiles(fileProcessingRequestModel);
@@ -53,6 +58,10 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
                             .withCause(e)
                             .asRuntimeException()
             );
+        } finally {
+            processingMetrics.decrementActiveTasks();
+            processingMetrics.addTaskDuration(System.currentTimeMillis() - startTime);
+            log.info("Current Metrics: {}", processingMetrics);
         }
     }
 
