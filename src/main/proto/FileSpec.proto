@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package com.fileprocessing;
+
+import "google/protobuf/timestamp.proto";
+
+// ----------------- Message Definitions -----------------
+
+message File {                        // Represents a File To Be Processed
+  string file_id = 1;                 // Unique ID for the file
+  string file_name = 2;               // Original file name
+  bytes content = 3;                  // File content (binary)
+  string file_type = 4;               // e.g., "pdf", "jpg", "txt"
+  int64 size_bytes = 5;               // File size
+}
+
+enum OperationType {                  // Types of Operations that can be performed on files
+  UNKNOWN = 0;
+  VALIDATE = 1;
+  METADATA_EXTRACTION = 2;
+  OCR_TEXT_EXTRACTION = 3;
+  IMAGE_RESIZE = 4;
+  FILE_COMPRESSION = 5;
+  FORMAT_CONVERSION = 6;
+  STORAGE = 7;
+}
+
+enum OperationStatus {                // Status of a single operation performed on a file.
+  STATUS_UNKNOWN = 0;
+  SUCCESS = 1;
+  FAILED = 2;
+  SKIPPED = 3;
+}
+
+message FileOperationResult {                 // Represents the result of a single file operation
+  string file_id = 1;                         // ID of the processed file
+  OperationType operation = 2;                // Type of operation
+  OperationStatus status = 3;                 // "SUCCESS" or "FAILED"
+  string details = 4;                         // Any extra info or error message
+  google.protobuf.Timestamp start_time = 5;
+  google.protobuf.Timestamp end_time = 6;
+  string result_location = 7;                 // e.g., path or URL if stored
+}
+
+message FileProcessingRequest {           // Request for server streaming or batch processing
+  repeated File files = 1;                // One or multiple files
+  repeated OperationType operations = 2;  // Which operations to perform on each file
+}
+
+message FileProcessingSummary {           // Summary of multiple files
+  int32 total_files = 1;
+  int32 successful_files = 2;
+  int32 failed_files = 3;
+  repeated FileOperationResult results = 4;
+}
+
+// ----------------- Service Definition -----------------
+
+service FileProcessingService {
+  // Unary RPC for single file processing
+  rpc ProcessFile(FileProcessingRequest) returns (FileProcessingSummary);
+
+  // Server streaming RPC for processing multiple files
+  rpc StreamFileOperations(FileProcessingRequest) returns (stream FileOperationResult);
+
+  // Client streaming RPC for batch file processing
+  rpc UploadFiles(stream File) returns (FileProcessingSummary);
+
+  // Bidirectional streaming RPC for real-time file processing
+  rpc LiveFileProcessing(stream File) returns (stream FileOperationResult);
+}
