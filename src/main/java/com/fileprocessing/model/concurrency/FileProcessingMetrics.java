@@ -1,5 +1,7 @@
 package com.fileprocessing.model.concurrency;
 
+import org.springframework.stereotype.Service;
+
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -7,6 +9,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Tracks metrics for the file processing service.
  * Thread-safe and safe to update concurrently.
  */
+@Service
 public class FileProcessingMetrics {
 
     private final AtomicInteger activeTasks = new AtomicInteger(0);

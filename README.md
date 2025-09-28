@@ -238,6 +238,107 @@ ThreadPoolManager
 * All models are immutable (`record`) for thread-safety.
 * `ThreadPoolManager` dynamically scales cores and max threads based on queue load.
 
+Here’s a full update section for your `README.md` with **unary RPC usage** examples using `grpcurl`. You can place it under a **“Usage”** or **“Testing”** section.
+
+---
+
+## Unary RPC Usage Example
+
+The unary RPC `ProcessFile` allows sending a batch of files in a single request and receiving a summarized result.
+
+### Prerequisites
+
+* Make sure the gRPC server is running (default port: `9090`).
+* `grpcurl` installed. You can install it via:
+
+```bash
+brew install grpcurl   # macOS
+sudo apt install grpcurl # Linux (Debian/Ubuntu)
+```
+
+### Example Proto Request
+
+Assume the proto message:
+
+```proto
+message FileProcessingRequest {
+  repeated File files = 1;
+  repeated OperationType operations = 2;
+}
+```
+
+Example JSON payload for `grpcurl`:
+
+```json
+{
+  "files": [
+    {
+      "fileId": "file-001",
+      "fileName": "example.pdf",
+      "content": "VGhpcyBpcyBhIHRlc3QgZmlsZSBjb250ZW50Lg==",
+      "fileType": "pdf",
+      "sizeBytes": 1024
+    }
+  ],
+  "operations": ["VALIDATE", "METADATA_EXTRACTION"]
+}
+```
+
+### grpcurl Command
+
+```bash
+grpcurl -plaintext \
+  -d '{
+        "files": [
+          {
+            "fileId": "file-001",
+            "fileName": "example.pdf",
+            "content": "VGhpcyBpcyBhIHRlc3QgZmlsZSBjb250ZW50Lg==",
+            "fileType": "pdf",
+            "sizeBytes": 1024
+          }
+        ],
+        "operations": ["VALIDATE","METADATA_EXTRACTION"]
+      }' \
+  localhost:9090 com.fileprocessing.FileProcessingService/ProcessFile
+```
+
+### Sample Response
+
+```json
+{
+  "totalFiles": 1,
+  "successfulFiles": 2,
+  "failedFiles": 0,
+  "results": [
+    {
+      "fileId": "file-001",
+      "operation": "VALIDATE",
+      "status": "SUCCESS",
+      "details": "File validated successfully",
+      "startTime": "2025-09-28T20:00:00.000Z",
+      "endTime": "2025-09-28T20:00:00.150Z",
+      "resultLocation": ""
+    },
+    {
+      "fileId": "file-001",
+      "operation": "METADATA_EXTRACTION",
+      "status": "SUCCESS",
+      "details": "Metadata extracted",
+      "startTime": "2025-09-28T20:00:00.150Z",
+      "endTime": "2025-09-28T20:00:00.250Z",
+      "resultLocation": ""
+    }
+  ]
+}
+```
+
+### Notes
+
+* All file contents must be Base64 encoded when sending JSON requests.
+* The unary RPC returns **once all requested operations are completed**.
+* Errors in processing will return an `INTERNAL` gRPC status with a descriptive message.
+
 ---
 
 ## License
