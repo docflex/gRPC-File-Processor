@@ -382,7 +382,7 @@ MIT License — free to use and extend.
 
 ## **4. Metrics / Monitoring**
 
-* [ ] Add per-operation metrics (e.g., processing duration per operation type)
+* [x] Add per-operation metrics (e.g., processing duration per operation type)
 * [ ] Expose metrics via **Prometheus** or **Spring Actuator** (note: actuator endpoint conflict with gRPC)
 * [ ] Track **success/failure rates** per workflow
 
@@ -398,7 +398,7 @@ MIT License — free to use and extend.
 
 ## **6. Testing**
 
-* [ ] Unit tests for all **FileOperations**
+* [x] Unit tests for all **FileOperations**
 * [ ] Integration tests for **WorkflowExecutorService**
 * [ ] gRPC end-to-end tests using `grpc-java` or `grpcurl`
 * [ ] Load testing for concurrent workflows
@@ -427,7 +427,7 @@ MIT License — free to use and extend.
 
 # Milestones
 
-## **Phase 1 — Core Unary File Processing (MVP)**
+## **[DELIVERED] Phase 1 — Core Unary File Processing (MVP)**
 
 **Goal:** Get the basic unary RPC (`ProcessFile`) fully functional with core operations.
 
