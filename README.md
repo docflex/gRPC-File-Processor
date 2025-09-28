@@ -238,10 +238,6 @@ ThreadPoolManager
 * All models are immutable (`record`) for thread-safety.
 * `ThreadPoolManager` dynamically scales cores and max threads based on queue load.
 
-Here’s a full update section for your `README.md` with **unary RPC usage** examples using `grpcurl`. You can place it under a **“Usage”** or **“Testing”** section.
-
----
-
 ## Unary RPC Usage Example
 
 The unary RPC `ProcessFile` allows sending a batch of files in a single request and receiving a summarized result.

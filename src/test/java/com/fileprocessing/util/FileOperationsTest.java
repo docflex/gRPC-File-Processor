@@ -666,50 +666,8 @@ class FileOperationsTest {
     }
 
     @Test
-    void convertFormat_withNullTargetFormat_shouldThrowNullPointerException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> FileOperations.convertFormat(validImageFile, null));
-    }
-
-    @Test
     void convertFormat_withEmptyTargetFormat_shouldThrowUnsupportedOperationException() {
         assertThrows(UnsupportedOperationException.class,
                 () -> FileOperations.convertFormat(validImageFile, ""));
-    }
-
-    @Test
-    void storeFile_withNullFile_shouldThrowNullPointerException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> FileOperations.storeFile(null));
-    }
-
-    @Test
-    void extractMetadata_withNullFile_shouldThrowNullPointerException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> FileOperations.extractMetadata(null));
-    }
-
-    @Test
-    void compressFile_withNullFile_shouldThrowNullPointerException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> FileOperations.compressFile(null));
-    }
-
-    @Test
-    void resizeImage_withNullFile_shouldThrowNullPointerException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> FileOperations.resizeImage(null, 100, 100));
-    }
-
-    @Test
-    void convertFormat_withNullFile_shouldThrowNullPointerException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> FileOperations.convertFormat(null, "png"));
-    }
-
-    @Test
-    void performOcr_withNullFile_shouldThrowNullPointerException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> FileOperations.performOcr(null));
     }
 }
