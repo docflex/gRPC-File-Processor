@@ -3,9 +3,9 @@ package com.fileprocessing.concurrency;
 import com.fileprocessing.FileSpec.OperationStatus;
 import com.fileprocessing.FileSpec.OperationType;
 import com.fileprocessing.model.*;
-import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import com.fileprocessing.model.concurrency.FileTask;
 import com.fileprocessing.model.concurrency.FileWorkflow;
+import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import com.fileprocessing.util.FileOperations;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /**
  * Executes file operations concurrently using a ThreadPoolManager.
@@ -80,6 +81,80 @@ public class WorkflowExecutorService {
                 .failedFiles(results.size() - (int) successCount)
                 .results(results)
                 .build();
+    }
+
+    /**
+     * Processes a workflow in streaming mode.
+     * <p>
+     * Each file operation result is pushed to the provided callback as soon as it completes,
+     * allowing clients to receive results in real-time instead of waiting for the entire batch.
+     * </p>
+     *
+     * <p><b>Error Handling:</b>
+     * <ul>
+     *     <li>If an individual task fails, a failed {@link FileOperationResultModel} is
+     *         generated and delivered to the consumer.</li>
+     *     <li>If an exception occurs while delivering the result to the consumer, it is
+     *         logged but does not interrupt other tasks.</li>
+     *     <li>Internal variable reassignment is avoided to comply with Java lambda rules
+     *         by using a final local variable for the result.</li>
+     * </ul>
+     * </p>
+     *
+     * <p><b>Thread Safety:</b>
+     * <ul>
+     *     <li>Writes to the resultConsumer are serialized using an internal lock to avoid
+     *         concurrent write issues (especially important for gRPC streaming).</li>
+     * </ul>
+     * </p>
+     *
+     * <p><b>Completion:</b> The returned {@link CompletableFuture} completes when all tasks
+     * (successful or failed) have been processed and delivered to the consumer.</p>
+     *
+     * @param requestModel   the internal request model containing files and requested operations
+     * @param resultConsumer a callback invoked with each {@link FileOperationResultModel} as soon as it is available
+     * @return a {@link CompletableFuture} that completes when all file operations have been processed and delivered
+     */
+    public CompletableFuture<Void> processWorkflowStreamed(FileProcessingRequestModel requestModel,
+                                                           Consumer<FileOperationResultModel> resultConsumer) {
+        List<FileTask> tasks = buildFileTasks(requestModel);
+
+        if (tasks.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        Object writeLock = new Object(); // ensure single-thread writes
+
+        // Submit all tasks
+        List<CompletableFuture<FileOperationResultModel>> futures = tasks.stream()
+                .map(task -> submitTask(task)
+                        .whenComplete((result, ex) -> {
+                            if (ex != null) {
+                                result = createFailedResult(
+                                        task.getFile().fileId(),
+                                        task.getOperation().operationType(),
+                                        ex);
+                                processingMetrics.incrementFailedTasks();
+                            } else {
+                                if (result.status() != OperationStatus.SUCCESS) {
+                                    processingMetrics.incrementFailedTasks();
+                                }
+                            }
+                            if (result != null) {
+                                try {
+                                    synchronized (writeLock) {
+                                        resultConsumer.accept(result);
+                                    }
+                                } catch (Exception consumeEx) {
+                                    log.error("Error delivering result for file {}",
+                                            task.getFile().fileId(), consumeEx);
+                                }
+                            }
+                        }))
+                .toList();
+
+        // Return a future that completes when all results are delivered
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
 
     /**

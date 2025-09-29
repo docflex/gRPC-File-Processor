@@ -41,15 +41,17 @@ public class MetricsController {
 
         // Derived task metrics
         int completedTasks = metrics.getCompletedTasks();
+        int activeTasks = metrics.getActiveTasks();
+        int totalTasks = completedTasks + activeTasks;
         int failedTasks = metrics.getFailedTasks();
-        int totalTasks = completedTasks + failedTasks;
-        double taskSuccessRate = totalTasks == 0 ? 0 : (completedTasks * 100.0) / totalTasks;
+        double taskSuccessRate = totalTasks == 0 ? 0 : ((completedTasks - failedTasks) * 100.0) / totalTasks;
 
         // Derived request metrics
         int completedRequests = metrics.getCompletedRequests();
+        int activeRequests = metrics.getActiveRequests();
+        int totalRequests = completedRequests + activeRequests;
         int failedRequests = metrics.getFailedRequests();
-        int totalRequests = completedRequests + failedRequests;
-        double requestSuccessRate = totalRequests == 0 ? 0 : (completedRequests * 100.0) / totalRequests;
+        double requestSuccessRate = totalRequests == 0 ? 0 : ((completedRequests - failedRequests) * 100.0) / totalRequests;
 
         summary.put("totalTasks", totalTasks);
         summary.put("taskSuccessRatePercent", taskSuccessRate);

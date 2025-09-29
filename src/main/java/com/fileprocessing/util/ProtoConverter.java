@@ -37,7 +37,7 @@ public final class ProtoConverter {
                 .build();
     }
 
-    private static FileModel toInternalFileModel(File fileProto) {
+    public static FileModel toInternalFileModel(File fileProto) {
         return FileModel.builder()
                 .fileId(fileProto.getFileId())
                 .fileName(fileProto.getFileName())
@@ -58,13 +58,13 @@ public final class ProtoConverter {
                 .setFailedFiles(model.failedFiles())
                 .addAllResults(
                         model.results().stream()
-                                .map(ProtoConverter::toProtoResult)
+                                .map(ProtoConverter::toProto)
                                 .collect(Collectors.toList())
                 )
                 .build();
     }
 
-    private static FileOperationResult toProtoResult(FileOperationResultModel model) {
+    public static FileOperationResult toProto(FileOperationResultModel model) {
         return FileOperationResult.newBuilder()
                 .setFileId(model.fileId())
                 .setOperation(model.operationType())
