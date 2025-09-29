@@ -13,7 +13,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -25,8 +24,8 @@ import java.util.zip.GZIPOutputStream;
  */
 @Slf4j
 public final class FileOperations {
-    private static final int MAX_FILE_SIZE_MB = 100;
     static final String STORAGE_DIR = "processed_files";
+    private static final int MAX_FILE_SIZE_MB = 100;
     private static final Map<String, String> MIME_TYPES;
     private static final ReentrantLock STORAGE_LOCK = new ReentrantLock();
 
@@ -194,8 +193,8 @@ public final class FileOperations {
     /**
      * Resize an image while maintaining aspect ratio.
      *
-     * @param file the image to resize
-     * @param maxWidth maximum width
+     * @param file      the image to resize
+     * @param maxWidth  maximum width
      * @param maxHeight maximum height
      * @return resized image as a new FileModel
      */
@@ -253,7 +252,7 @@ public final class FileOperations {
     /**
      * Convert file format to a different type.
      *
-     * @param file the file to convert
+     * @param file         the file to convert
      * @param targetFormat the desired output format
      * @return converted file as a new FileModel
      */

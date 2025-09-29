@@ -1,10 +1,6 @@
 package com.fileprocessing.util;
 
-import com.fileprocessing.FileSpec.FileProcessingSummary;
-import com.fileprocessing.FileSpec.FileOperationResult;
-import com.fileprocessing.FileSpec.FileProcessingRequest;
-import com.fileprocessing.FileSpec.OperationType;
-import com.fileprocessing.FileSpec.File;
+import com.fileprocessing.FileSpec.*;
 import com.fileprocessing.model.FileModel;
 import com.fileprocessing.model.FileOperationResultModel;
 import com.fileprocessing.model.FileProcessingRequestModel;
