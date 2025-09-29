@@ -1,6 +1,6 @@
 package com.fileprocessing.housekeeping;
 
-import com.fileprocessing.model.concurrency.FileProcessingMetrics;
+import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

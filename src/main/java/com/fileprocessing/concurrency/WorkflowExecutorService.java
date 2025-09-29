@@ -3,7 +3,7 @@ package com.fileprocessing.concurrency;
 import com.fileprocessing.FileSpec.OperationStatus;
 import com.fileprocessing.FileSpec.OperationType;
 import com.fileprocessing.model.*;
-import com.fileprocessing.model.concurrency.FileProcessingMetrics;
+import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import com.fileprocessing.model.concurrency.FileTask;
 import com.fileprocessing.model.concurrency.FileWorkflow;
 import com.fileprocessing.util.FileOperations;

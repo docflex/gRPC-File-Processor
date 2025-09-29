@@ -7,7 +7,7 @@ import com.fileprocessing.FileSpec.FileProcessingRequest;
 import com.fileprocessing.FileSpec.FileProcessingSummary;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
-import com.fileprocessing.model.concurrency.FileProcessingMetrics;
+import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import com.fileprocessing.service.grpc.ProcessFileService;
 import com.fileprocessing.util.ProtoConverter;
 import io.grpc.Status;
@@ -66,15 +66,57 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
 
     @Override
     public void streamFileOperations(FileProcessingRequest fileProcessingRequest, StreamObserver<FileOperationResult> responseObserver) {
+        long startTime = System.currentTimeMillis();
+        processingMetrics.incrementActiveRequests();
+        try {
+            responseObserver.onError(
+                Status.UNIMPLEMENTED
+                    .withDescription("Stream file operations not implemented yet")
+                    .asRuntimeException()
+            );
+            processingMetrics.incrementFailedRequests();
+        } finally {
+            processingMetrics.decrementActiveRequests();
+            processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
+            log.info("Current Metrics: {}", processingMetrics);
+        }
     }
 
     @Override
     public StreamObserver<File> uploadFiles(StreamObserver<FileProcessingSummary> responseObserver) {
+        long startTime = System.currentTimeMillis();
+        processingMetrics.incrementActiveRequests();
+        try {
+            responseObserver.onError(
+                Status.UNIMPLEMENTED
+                    .withDescription("Upload files not implemented yet")
+                    .asRuntimeException()
+            );
+            processingMetrics.incrementFailedRequests();
+        } finally {
+            processingMetrics.decrementActiveRequests();
+            processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
+            log.info("Current Metrics: {}", processingMetrics);
+        }
         return null;
     }
 
     @Override
     public StreamObserver<File> liveFileProcessing(StreamObserver<FileOperationResult> responseObserver) {
+        long startTime = System.currentTimeMillis();
+        processingMetrics.incrementActiveRequests();
+        try {
+            responseObserver.onError(
+                Status.UNIMPLEMENTED
+                    .withDescription("Live file processing not implemented yet")
+                    .asRuntimeException()
+            );
+            processingMetrics.incrementFailedRequests();
+        } finally {
+            processingMetrics.decrementActiveRequests();
+            processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
+            log.info("Current Metrics: {}", processingMetrics);
+        }
         return null;
     }
 }

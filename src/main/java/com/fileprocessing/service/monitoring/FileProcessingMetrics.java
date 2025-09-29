@@ -1,4 +1,4 @@
-package com.fileprocessing.model.concurrency;
+package com.fileprocessing.service.monitoring;
 
 import org.springframework.stereotype.Service;
 
