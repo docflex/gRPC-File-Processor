@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -146,12 +147,14 @@ public class WorkflowExecutorService {
         try {
             log.info("Executing {} on file {}", operation, file.fileName());
 
+            Path tempFilePath = null; // Placeholder for actual file path handling
+
             switch (operation) {
                 case VALIDATE -> FileOperations.validateFile(file);
                 case METADATA_EXTRACTION -> FileOperations.extractMetadata(file);
                 case OCR_TEXT_EXTRACTION -> FileOperations.performOcr(file);
                 case IMAGE_RESIZE -> FileOperations.resizeImage(file, 800, 600); // Default max dimensions
-                case FILE_COMPRESSION -> FileOperations.compressFile(file);
+                case FILE_COMPRESSION -> tempFilePath = FileOperations.compressFile(file);
                 case FORMAT_CONVERSION -> FileOperations.convertFormat(file, "jpg"); // Default format
                 case STORAGE -> FileOperations.storeFile(file);
                 default -> log.warn("Unknown operation: {}, skipping", operation);
@@ -164,7 +167,7 @@ public class WorkflowExecutorService {
                     .details("Operation completed successfully")
                     .startTime(start)
                     .endTime(Instant.now())
-                    .resultLocation("/mock/location/" + file.fileName())
+                    .resultLocation(tempFilePath != null ? tempFilePath.toString() : "/mock/location/" + file.fileName())
                     .build();
 
         } catch (Exception e) {
