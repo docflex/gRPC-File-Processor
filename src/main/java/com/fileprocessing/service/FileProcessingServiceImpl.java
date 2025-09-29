@@ -8,10 +8,7 @@ import com.fileprocessing.FileSpec.FileProcessingSummary;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
 import com.fileprocessing.model.concurrency.FileProcessingMetrics;
-import com.fileprocessing.service.grpc.LiveFileProcessingService;
 import com.fileprocessing.service.grpc.ProcessFileService;
-import com.fileprocessing.service.grpc.StreamFileOperationsService;
-import com.fileprocessing.service.grpc.UploadFilesService;
 import com.fileprocessing.util.ProtoConverter;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -36,13 +33,14 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
      * Step 2: Delegate to ProcessFileService
      * Step 3: Convert internal summary model to proto response
      * Step 4: Send response via responseObserver
+     *
      * @param fileProcessingRequest: The incoming gRPC request containing files and operations.
-     * @param responseObserver: The gRPC stream observer to send the response.
+     * @param responseObserver:      The gRPC stream observer to send the response.
      */
     @Override
     public void processFile(FileProcessingRequest fileProcessingRequest, StreamObserver<FileProcessingSummary> responseObserver) {
         long startTime = System.currentTimeMillis();
-        processingMetrics.incrementActiveTasks(); // Increment active tasks
+        processingMetrics.incrementActiveRequests();
 
         try {
             FileProcessingRequestModel fileProcessingRequestModel = ProtoConverter.toInternalModel(fileProcessingRequest);
@@ -52,6 +50,7 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
             responseObserver.onCompleted();
         } catch (Exception e) {
             log.error("Error processing file workflow", e);
+            processingMetrics.incrementFailedRequests();
             responseObserver.onError(
                     Status.INTERNAL
                             .withDescription("File processing failed: " + e.getMessage())
@@ -59,8 +58,8 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
                             .asRuntimeException()
             );
         } finally {
-            processingMetrics.decrementActiveTasks();
-            processingMetrics.addTaskDuration(System.currentTimeMillis() - startTime);
+            processingMetrics.decrementActiveRequests();
+            processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
             log.info("Current Metrics: {}", processingMetrics);
         }
     }

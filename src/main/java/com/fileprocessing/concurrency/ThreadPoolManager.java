@@ -2,6 +2,7 @@ package com.fileprocessing.concurrency;
 
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
+import org.springframework.stereotype.Component;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -16,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Safe shutdown
  */
 @Slf4j
+@Component
 public final class ThreadPoolManager {
 
     // TODO: Make all of these configurable via application properties and hot-reloadable
