@@ -207,9 +207,11 @@ grpcurl -plaintext \
   localhost:9090 com.fileprocessing.FileProcessingService/StreamFileOperations
 ```
 
+---
 
 
-### 5. Metrics
+
+## Metrics
 
 * Metrics tracked in `FileProcessingMetrics`
 * Active tasks and average task duration are updated in real-time
@@ -458,9 +460,9 @@ MIT License — free to use and extend.
 
 ## **1. gRPC Services**
 
-* [ ] Implement `StreamFileOperations` (server streaming)
-* [ ] Implement `UploadFiles` (client streaming)
-* [ ] Implement `LiveFileProcessing` (bidirectional streaming)
+* [x] Implement `StreamFileOperations` (server streaming)
+* [x] Implement `UploadFiles` (client streaming)
+* [x] Implement `LiveFileProcessing` (bidirectional streaming)
 * [ ] Add request validation for all RPCs (check file size, type, operation support)
 * [ ] Support gRPC error handling with meaningful status codes
 
@@ -480,8 +482,8 @@ MIT License — free to use and extend.
 
 ## **3. Concurrency / Workflow**
 
-* [ ] Finalize `WorkflowExecutorService` integration for all gRPC endpoints
-* [ ] Add error handling for individual `FileTask`s without failing the whole workflow
+* [x] Finalize `WorkflowExecutorService` integration for all gRPC endpoints
+* [x] Add error handling for individual `FileTask`s without failing the whole workflow
 * [ ] Add **timeout support** for long-running tasks
 * [ ] Improve **backpressure** handling (queue thresholds, client notifications)
 
@@ -541,12 +543,11 @@ MIT License — free to use and extend.
 **Tasks:**
 
 1. Implement all placeholder operations in `ProcessFileService`:
-
-  * Validation
-  * Metadata extraction
-  * Compression
-  * Format conversion
-  * File storage
+   * Validation
+   * Metadata extraction
+   * Compression
+   * Format conversion
+   * File storage
 2. Ensure `ProcessFileService` is properly registered as a Spring Bean.
 3. Complete the unary gRPC endpoint (`processFile`) in `FileProcessingServiceImpl`.
 4. Add basic unit tests for operations.
@@ -592,7 +593,23 @@ MIT License — free to use and extend.
 
 ---
 
-## **Phase 4 — Storage, Format, and OCR Enhancements**
+## **Phase 4 — Monitoring, Metrics, and Observability**
+
+**Goal:** Make the service observable and production-ready.
+
+**Tasks:**
+
+1. Expose metrics via Spring Actuator or Prometheus.
+2. Track workflow success/failure rates, average task duration.
+3. Add logging with SLF4J/Logback and structured logging.
+4. Optional: gRPC reflection for debugging.
+
+**Milestone Deliverable:**
+✅ Production-grade observability with metrics and logs.
+
+---
+
+## **Phase 5 — Storage, Format, and OCR Enhancements**
 
 **Goal:** Implement full file-processing logic beyond placeholders.
 
@@ -606,22 +623,6 @@ MIT License — free to use and extend.
 
 **Milestone Deliverable:**
 ✅ Fully-featured file-processing pipeline for supported file types.
-
----
-
-## **Phase 5 — Monitoring, Metrics, and Observability**
-
-**Goal:** Make the service observable and production-ready.
-
-**Tasks:**
-
-1. Expose metrics via Spring Actuator or Prometheus.
-2. Track workflow success/failure rates, average task duration.
-3. Add logging with SLF4J/Logback and structured logging.
-4. Optional: gRPC reflection for debugging.
-
-**Milestone Deliverable:**
-✅ Production-grade observability with metrics and logs.
 
 ---
 
