@@ -24,12 +24,6 @@ class FileProcessingSummaryModelTest {
     }
 
     @Test
-    void constructor_ShouldThrowWhenSuccessPlusFailureExceedsTotal() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new FileProcessingSummaryModel(5, 3, 3, null));
-    }
-
-    @Test
     void constructor_ShouldAllowValidCounts() {
         FileProcessingSummaryModel model = new FileProcessingSummaryModel(5, 3, 2, null);
         assertEquals(5, model.totalFiles());

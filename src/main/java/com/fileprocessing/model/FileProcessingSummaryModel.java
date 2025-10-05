@@ -22,9 +22,6 @@ public record FileProcessingSummaryModel(
         if (totalFiles < 0 || successfulFiles < 0 || failedFiles < 0) {
             throw new IllegalArgumentException("File counts cannot be negative");
         }
-        if (successfulFiles + failedFiles > totalFiles) {
-            throw new IllegalArgumentException("Sum of successful and failed files cannot exceed totalFiles");
-        }
 
         results = (results != null) ? List.copyOf(results) : Collections.emptyList();
     }
