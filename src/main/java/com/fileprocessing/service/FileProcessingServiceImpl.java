@@ -4,6 +4,7 @@ import com.fileprocessing.FileProcessingServiceGrpc.FileProcessingServiceImplBas
 import com.fileprocessing.FileSpec.*;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
+import com.fileprocessing.service.grpc.LiveFileProcessingService;
 import com.fileprocessing.service.grpc.ProcessFileService;
 import com.fileprocessing.service.grpc.StreamFileOperationsService;
 import com.fileprocessing.service.grpc.UploadFilesService;
@@ -24,7 +25,7 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
     private final ProcessFileService processFileService;
     private final StreamFileOperationsService streamFileOperationsService;
     private final UploadFilesService uploadFilesService;
-//    private final LiveFileProcessingService liveFileProcessingService;
+    private final LiveFileProcessingService liveFileProcessingService;
 
     // TODO: Rule of thumb
     //  Outer service = translate request, delegate, update metrics.
@@ -214,21 +215,17 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
     }
 
     @Override
-    public StreamObserver<File> liveFileProcessing(StreamObserver<FileOperationResult> responseObserver) {
+    public StreamObserver<FileUploadRequest> liveFileProcessing(StreamObserver<FileOperationResult> responseObserver) {
         long startTime = System.currentTimeMillis();
         processingMetrics.incrementActiveRequests();
+
         try {
-            responseObserver.onError(
-                    Status.UNIMPLEMENTED
-                            .withDescription("Live file processing not implemented yet")
-                            .asRuntimeException()
-            );
-            processingMetrics.incrementFailedRequests();
+            return liveFileProcessingService.liveFileProcessing(responseObserver);
         } finally {
             processingMetrics.decrementActiveRequests();
             processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
             log.info("Current Metrics: {}", processingMetrics);
         }
-        return null;
     }
+
 }

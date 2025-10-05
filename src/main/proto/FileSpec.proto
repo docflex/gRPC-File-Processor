@@ -72,5 +72,5 @@ service FileProcessingService {
   rpc UploadFiles(stream FileUploadRequest) returns (FileProcessingSummary);
 
   // Bidirectional streaming RPC for real-time file processing
-  rpc LiveFileProcessing(stream File) returns (stream FileOperationResult);
+  rpc LiveFileProcessing(stream FileUploadRequest) returns (stream FileOperationResult);
 }

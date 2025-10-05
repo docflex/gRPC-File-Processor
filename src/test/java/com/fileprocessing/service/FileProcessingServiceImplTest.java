@@ -7,6 +7,7 @@ import com.fileprocessing.FileSpec.FileProcessingRequest;
 import com.fileprocessing.FileSpec.FileProcessingSummary;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
+import com.fileprocessing.service.grpc.LiveFileProcessingService;
 import com.fileprocessing.service.grpc.StreamFileOperationsService;
 import com.fileprocessing.service.grpc.UploadFilesService;
 import com.fileprocessing.service.monitoring.FileProcessingMetrics;
@@ -44,13 +45,16 @@ class FileProcessingServiceImplTest {
     private UploadFilesService uploadFilesService;
 
     @Mock
+    private LiveFileProcessingService liveFileProcessingService;
+
+    @Mock
     private StreamObserver<FileProcessingSummary> responseObserver;
 
     private FileProcessingServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new FileProcessingServiceImpl(processingMetrics, processFileService, streamFileOperationsService, uploadFilesService);
+        service = new FileProcessingServiceImpl(processingMetrics, processFileService, streamFileOperationsService, uploadFilesService, liveFileProcessingService);
     }
 
     @Test
@@ -208,7 +212,7 @@ class FileProcessingServiceImplTest {
         StreamObserver<FileOperationResult> observer = mock(StreamObserver.class);
 
         // When
-        StreamObserver<File> result = service.liveFileProcessing(observer);
+        StreamObserver<FileUploadRequest> result = service.liveFileProcessing(observer);
 
         // Then
         verify(processingMetrics).incrementActiveRequests();

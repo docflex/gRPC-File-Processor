@@ -2,6 +2,7 @@ package com.fileprocessing.service.grpc;
 
 import com.fileprocessing.FileSpec.FileProcessingSummary;
 import com.fileprocessing.FileSpec.FileUploadRequest;
+import com.fileprocessing.FileSpec.OperationType;
 import com.fileprocessing.model.FileModel;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
@@ -30,7 +31,7 @@ public class UploadFilesService {
             Runnable onFailure,
             Runnable onCompletion) {
 
-        Map<String, List<com.fileprocessing.FileSpec.OperationType>> fileOperationsMap = new HashMap<>();
+        Map<String, List<OperationType>> fileOperationsMap = new HashMap<>();
         List<FileModel> receivedFiles = new ArrayList<>();
         boolean[] completedOrErrored = {false};
 
