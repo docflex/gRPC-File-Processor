@@ -1,11 +1,14 @@
 package com.fileprocessing.service;
 
+import com.fileprocessing.FileSpec.FileUploadRequest;
 import com.fileprocessing.FileSpec.File;
 import com.fileprocessing.FileSpec.FileOperationResult;
 import com.fileprocessing.FileSpec.FileProcessingRequest;
 import com.fileprocessing.FileSpec.FileProcessingSummary;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
+import com.fileprocessing.service.grpc.StreamFileOperationsService;
+import com.fileprocessing.service.grpc.UploadFilesService;
 import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import com.fileprocessing.service.grpc.ProcessFileService;
 import io.grpc.Status;
@@ -35,13 +38,19 @@ class FileProcessingServiceImplTest {
     private ProcessFileService processFileService;
 
     @Mock
+    private StreamFileOperationsService streamFileOperationsService;
+
+    @Mock
+    private UploadFilesService uploadFilesService;
+
+    @Mock
     private StreamObserver<FileProcessingSummary> responseObserver;
 
     private FileProcessingServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new FileProcessingServiceImpl(processingMetrics, processFileService);
+        service = new FileProcessingServiceImpl(processingMetrics, processFileService, streamFileOperationsService, uploadFilesService);
     }
 
     @Test
@@ -174,7 +183,7 @@ class FileProcessingServiceImplTest {
     @Test
     void uploadFiles_NotImplementedYet() {
         // When
-        StreamObserver<File> result = service.uploadFiles(responseObserver);
+        StreamObserver<FileUploadRequest> result = service.uploadFiles(responseObserver);
 
         // Then
         verify(processingMetrics).incrementActiveRequests();

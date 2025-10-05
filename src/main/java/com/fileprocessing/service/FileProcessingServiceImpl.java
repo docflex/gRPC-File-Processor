@@ -1,6 +1,7 @@
 package com.fileprocessing.service;
 
 import com.fileprocessing.FileProcessingServiceGrpc.FileProcessingServiceImplBase;
+import com.fileprocessing.FileSpec.FileUploadRequest;
 import com.fileprocessing.FileSpec.File;
 import com.fileprocessing.FileSpec.FileOperationResult;
 import com.fileprocessing.FileSpec.FileProcessingRequest;
@@ -9,6 +10,7 @@ import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
 import com.fileprocessing.service.grpc.ProcessFileService;
 import com.fileprocessing.service.grpc.StreamFileOperationsService;
+import com.fileprocessing.service.grpc.UploadFilesService;
 import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import com.fileprocessing.util.ProtoConverter;
 import io.grpc.Status;
@@ -25,9 +27,12 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
     private final FileProcessingMetrics processingMetrics;
     private final ProcessFileService processFileService;
     private final StreamFileOperationsService streamFileOperationsService;
-//    private final UploadFilesService uploadFilesService;
+    private final UploadFilesService uploadFilesService;
 //    private final LiveFileProcessingService liveFileProcessingService;
 
+    // TODO: Rule of thumb
+    //  Outer service = translate request, delegate, update metrics.
+    //  Inner service = owns the lifecycle of the StreamObserver.
     /**
      * Unary gRPC RPC to process a batch of files.
      * <p>
@@ -127,23 +132,79 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
     }
 
 
+    /**
+     * Handles client-streaming gRPC requests to upload multiple files.
+     * <p>
+     * This method delegates the actual upload processing to {@link UploadFilesService}.
+     * It manages request-level metrics such as active requests, request duration,
+     * and failed request counts.
+     * </p>
+     *
+     * <p><b>Workflow:</b></p>
+     * <ol>
+     *     <li>Increments the active request count at the start.</li>
+     *     <li>Delegates the streaming lifecycle to {@link UploadFilesService#uploadFiles}.</li>
+     *     <li>On completion of the stream, decrements the active request count and records
+     *     request duration.</li>
+     *     <li>If any exception occurs during setup, increments the failed requests counter
+     *     and sends an INTERNAL gRPC error to the client.</li>
+     * </ol>
+     *
+     * <p><b>Metrics Tracking:</b></p>
+     * <ul>
+     *     <li>{@link FileProcessingMetrics#incrementActiveRequests()} is called at the start.</li>
+     *     <li>{@link FileProcessingMetrics#decrementActiveRequests()} and
+     *     {@link FileProcessingMetrics#addRequestDuration(long)} are called on stream completion.</li>
+     *     <li>{@link FileProcessingMetrics#incrementFailedRequests()} is called if setup fails or
+     *     an exception occurs during processing.</li>
+     * </ul>
+     *
+     * <p><b>Error Handling:</b></p>
+     * <ul>
+     *     <li>If an exception is thrown during the setup of the streaming observer,
+     *     the client receives a gRPC {@link io.grpc.Status#INTERNAL} error with a descriptive message.</li>
+     *     <li>If an exception occurs while processing individual files, it is handled
+     *     inside {@link UploadFilesService} and the failed tasks are tracked via metrics.</li>
+     * </ul>
+     *
+     * @param responseObserver the gRPC {@link StreamObserver} used to send the final
+     *                         {@link FileProcessingSummary} back to the client once all files are processed
+     * @return a {@link StreamObserver} that the gRPC client uses to stream {@link FileUploadRequest} messages
+     *         (one per file) to the server
+     */
     @Override
-    public StreamObserver<File> uploadFiles(StreamObserver<FileProcessingSummary> responseObserver) {
+    public StreamObserver<FileUploadRequest> uploadFiles(StreamObserver<FileProcessingSummary> responseObserver) {
         long startTime = System.currentTimeMillis();
         processingMetrics.incrementActiveRequests();
+
         try {
-            responseObserver.onError(
-                    Status.UNIMPLEMENTED
-                            .withDescription("Upload files not implemented yet")
-                            .asRuntimeException()
+            return uploadFilesService.uploadFiles(
+                    responseObserver,
+                    () -> {}, // onSuccess, optional extra processing
+                    processingMetrics::incrementFailedRequests,  // onFailure
+                    () -> { // onCompletion
+                        processingMetrics.decrementActiveRequests();
+                        processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
+                        log.info("Current Metrics: {}", processingMetrics);
+                    }
             );
+        } catch (Exception e) {
+            log.error("Error handling uploadFiles", e);
             processingMetrics.incrementFailedRequests();
-        } finally {
             processingMetrics.decrementActiveRequests();
             processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
-            log.info("Current Metrics: {}", processingMetrics);
+            responseObserver.onError(
+                    Status.INTERNAL
+                            .withDescription("Upload files failed: " + e.getMessage())
+                            .withCause(e)
+                            .asRuntimeException()
+            );
+            return new StreamObserver<>() {
+                @Override public void onNext(FileUploadRequest file) {}
+                @Override public void onError(Throwable throwable) {}
+                @Override public void onCompleted() {}
+            };
         }
-        return null;
     }
 
     @Override

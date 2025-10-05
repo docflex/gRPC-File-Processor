@@ -71,9 +71,15 @@ public class WorkflowExecutorService {
                 .map(CompletableFuture::join)
                 .toList();
 
-        long successCount = results.stream()
-                .filter(r -> r.status() == OperationStatus.SUCCESS)
-                .count();
+        long successCount = 0;
+
+        for (FileOperationResultModel result : results) {
+            if (result.status() == OperationStatus.SUCCESS) {
+                successCount++;
+            } else {
+                processingMetrics.incrementFailedTasks();
+            }
+        }
 
         return FileProcessingSummaryModel.builder()
                 .totalFiles(requestModel.files().size())
