@@ -1,11 +1,7 @@
 package com.fileprocessing.service;
 
 import com.fileprocessing.FileProcessingServiceGrpc.FileProcessingServiceImplBase;
-import com.fileprocessing.FileSpec.FileUploadRequest;
-import com.fileprocessing.FileSpec.File;
-import com.fileprocessing.FileSpec.FileOperationResult;
-import com.fileprocessing.FileSpec.FileProcessingRequest;
-import com.fileprocessing.FileSpec.FileProcessingSummary;
+import com.fileprocessing.FileSpec.*;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
 import com.fileprocessing.service.grpc.ProcessFileService;
@@ -33,6 +29,7 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
     // TODO: Rule of thumb
     //  Outer service = translate request, delegate, update metrics.
     //  Inner service = owns the lifecycle of the StreamObserver.
+
     /**
      * Unary gRPC RPC to process a batch of files.
      * <p>
@@ -170,7 +167,7 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
      * @param responseObserver the gRPC {@link StreamObserver} used to send the final
      *                         {@link FileProcessingSummary} back to the client once all files are processed
      * @return a {@link StreamObserver} that the gRPC client uses to stream {@link FileUploadRequest} messages
-     *         (one per file) to the server
+     * (one per file) to the server
      */
     @Override
     public StreamObserver<FileUploadRequest> uploadFiles(StreamObserver<FileProcessingSummary> responseObserver) {
@@ -180,7 +177,8 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
         try {
             return uploadFilesService.uploadFiles(
                     responseObserver,
-                    () -> {}, // onSuccess, optional extra processing
+                    () -> {
+                    }, // onSuccess, optional extra processing
                     processingMetrics::incrementFailedRequests,  // onFailure
                     () -> { // onCompletion
                         processingMetrics.decrementActiveRequests();
@@ -200,9 +198,17 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
                             .asRuntimeException()
             );
             return new StreamObserver<>() {
-                @Override public void onNext(FileUploadRequest file) {}
-                @Override public void onError(Throwable throwable) {}
-                @Override public void onCompleted() {}
+                @Override
+                public void onNext(FileUploadRequest file) {
+                }
+
+                @Override
+                public void onError(Throwable throwable) {
+                }
+
+                @Override
+                public void onCompleted() {
+                }
             };
         }
     }
