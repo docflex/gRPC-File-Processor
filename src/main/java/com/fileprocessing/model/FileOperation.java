@@ -9,29 +9,20 @@ import java.util.Objects;
 
 /**
  * Represents a single operation to perform on a file.
- * Immutable and safe for multithreaded use.
+ * Immutable, validated, and thread-safe.
  */
 public record FileOperation(OperationType operationType, Map<String, Object> parameters) {
 
     /**
      * Constructor with validation and defensive copy.
-     *
-     * @param operationType the type of operation (required)
-     * @param parameters    optional parameters for the operation
      */
-    public FileOperation(OperationType operationType, Map<String, Object> parameters) {
-        this.operationType = Objects.requireNonNull(operationType, "operationType cannot be null");
-
-        if (parameters != null) {
-            // Create unmodifiable copy to prevent external mutation
-            this.parameters = Map.copyOf(parameters);
-        } else {
-            this.parameters = Collections.emptyMap();
-        }
+    public FileOperation {
+        Objects.requireNonNull(operationType, "operationType cannot be null");
+        parameters = (parameters != null) ? Map.copyOf(parameters) : Collections.emptyMap();
     }
 
     /**
-     * Builder pattern for safer construction.
+     * Builder for easier construction.
      */
     public static FileOperationBuilder builder() {
         return new FileOperationBuilder();
@@ -44,9 +35,16 @@ public record FileOperation(OperationType operationType, Map<String, Object> par
         return parameters.get(key);
     }
 
+    /**
+     * Checks if this operation has any parameters.
+     */
+    public boolean hasParameters() {
+        return !parameters.isEmpty();
+    }
+
     public static class FileOperationBuilder {
-        private final Map<String, Object> parameters = new HashMap<>();
         private OperationType operationType;
+        private final Map<String, Object> parameters = new HashMap<>();
 
         public FileOperationBuilder operationType(OperationType operationType) {
             this.operationType = operationType;

@@ -8,38 +8,30 @@ import java.util.Objects;
 
 /**
  * Represents the result of a single file operation.
- * Immutable and safe for concurrent use.
- *
- * @param resultLocation path/URL to stored file
+ * Immutable, validated, and thread-safe.
  */
-public record FileOperationResultModel(String fileId, OperationType operationType, OperationStatus status,
-                                       String details, Instant startTime, Instant endTime, String resultLocation) {
+public record FileOperationResultModel(
+        String fileId,
+        OperationType operationType,
+        OperationStatus status,
+        String details,
+        Instant startTime,
+        Instant endTime,
+        String resultLocation
+) {
 
     /**
-     * Constructor with validation.
+     * Compact constructor with validation and defaults.
      */
-    public FileOperationResultModel(String fileId,
-                                    OperationType operationType,
-                                    OperationStatus status,
-                                    String details,
-                                    Instant startTime,
-                                    Instant endTime,
-                                    String resultLocation) {
+    public FileOperationResultModel {
+        Objects.requireNonNull(fileId, "fileId cannot be null");
+        Objects.requireNonNull(operationType, "operationType cannot be null");
+        Objects.requireNonNull(status, "status cannot be null");
 
-        this.fileId = Objects.requireNonNull(fileId, "fileId cannot be null");
-        this.operationType = Objects.requireNonNull(operationType, "operationType cannot be null");
-        this.status = Objects.requireNonNull(status, "status cannot be null");
-        this.details = (details != null) ? details : "";
-        this.startTime = (startTime != null) ? startTime : Instant.now();
-        this.endTime = (endTime != null) ? endTime : Instant.now();
-        this.resultLocation = (resultLocation != null) ? resultLocation : "";
-    }
-
-    /**
-     * Builder pattern for easier construction.
-     */
-    public static FileOperationResultModelBuilder builder() {
-        return new FileOperationResultModelBuilder();
+        details = (details != null) ? details : "";
+        startTime = (startTime != null) ? startTime : Instant.now();
+        endTime = (endTime != null) ? endTime : Instant.now();
+        resultLocation = (resultLocation != null) ? resultLocation : "";
     }
 
     /**
@@ -50,6 +42,12 @@ public record FileOperationResultModel(String fileId, OperationType operationTyp
         return Math.max(duration, 0);
     }
 
+    /**
+     * Builder for easier construction.
+     */
+    public static FileOperationResultModelBuilder builder() {
+        return new FileOperationResultModelBuilder();
+    }
 
     public static class FileOperationResultModelBuilder {
         private String fileId;
@@ -96,7 +94,9 @@ public record FileOperationResultModel(String fileId, OperationType operationTyp
         }
 
         public FileOperationResultModel build() {
-            return new FileOperationResultModel(fileId, operationType, status, details, startTime, endTime, resultLocation);
+            return new FileOperationResultModel(
+                    fileId, operationType, status, details, startTime, endTime, resultLocation
+            );
         }
     }
 }

@@ -84,7 +84,7 @@ class FileProcessingServiceImplTest {
         // Then
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
         verify(processingMetrics, never()).incrementFailedRequests();
 
         verify(responseObserver).onNext(any(FileProcessingSummary.class));
@@ -114,7 +114,7 @@ class FileProcessingServiceImplTest {
         // Then
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
         verify(processingMetrics).incrementFailedRequests();
 
         verify(responseObserver, never()).onNext(any());
@@ -149,7 +149,7 @@ class FileProcessingServiceImplTest {
         // Then
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
     }
 
     @Test
@@ -198,7 +198,7 @@ class FileProcessingServiceImplTest {
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).incrementFailedRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
 
         ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
         verify(observer).onError(errorCaptor.capture());
@@ -243,7 +243,7 @@ class FileProcessingServiceImplTest {
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).incrementFailedRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
 
         ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
         verify(responseObserver).onError(errorCaptor.capture());
@@ -267,7 +267,7 @@ class FileProcessingServiceImplTest {
         // Then
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
         verify(liveFileProcessingService).liveFileProcessing(observer);
         assertEquals(expectedStreamObserver, result);
         verify(processingMetrics, never()).incrementFailedRequests();
@@ -288,7 +288,7 @@ class FileProcessingServiceImplTest {
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).incrementFailedRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
 
         ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
         verify(observer).onError(errorCaptor.capture());

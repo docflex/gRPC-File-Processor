@@ -1,10 +1,7 @@
 package com.fileprocessing.util;
 
 import com.fileprocessing.FileSpec.*;
-import com.fileprocessing.model.FileModel;
-import com.fileprocessing.model.FileOperationResultModel;
-import com.fileprocessing.model.FileProcessingRequestModel;
-import com.fileprocessing.model.FileProcessingSummaryModel;
+import com.fileprocessing.model.*;
 
 import java.time.Instant;
 import java.util.List;
@@ -47,6 +44,14 @@ public final class ProtoConverter {
                 .build();
     }
 
+    public static FileUploadRequestModel toInternalModel(FileUploadRequest request) {
+        return new FileUploadRequestModel(
+                toInternalFileModel(request.getFile()),
+                request.getOperationsList()
+        );
+    }
+
+
     // =======================
     // Response Conversions
     // =======================
@@ -81,6 +86,17 @@ public final class ProtoConverter {
                 .setResultLocation(model.resultLocation())
                 .build();
     }
+
+    public static File toProto(FileModel model) {
+        return File.newBuilder()
+                .setFileId(model.fileId())
+                .setFileName(model.fileName())
+                .setFileType(model.fileType())
+                .setSizeBytes(model.sizeBytes())
+                .setContent(com.google.protobuf.ByteString.copyFrom(model.content()))
+                .build();
+    }
+
 
     // =======================
     // Helpers

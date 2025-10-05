@@ -57,8 +57,8 @@ public class WorkflowExecutorService {
         List<CompletableFuture<FileOperationResultModel>> futures = tasks.stream()
                 .map(task -> submitTask(task)
                         .exceptionally(ex -> createFailedResult(
-                                task.getFile().fileId(),
-                                task.getOperation().operationType(),
+                                task.file().fileId(),
+                                task.operation().operationType(),
                                 ex)))
                 .toList();
 
@@ -132,19 +132,23 @@ public class WorkflowExecutorService {
         Object writeLock = new Object(); // ensure single-thread writes
 
         // Submit all tasks
+        long startTime = System.currentTimeMillis();
         List<CompletableFuture<FileOperationResultModel>> futures = tasks.stream()
                 .map(task -> submitTask(task)
                         .whenComplete((result, ex) -> {
+                            long duration = System.currentTimeMillis() - startTime;
                             if (ex != null) {
                                 result = createFailedResult(
-                                        task.getFile().fileId(),
-                                        task.getOperation().operationType(),
+                                        task.file().fileId(),
+                                        task.operation().operationType(),
                                         ex);
+                                task.completeExceptionally(ex, processingMetrics, duration);
                                 processingMetrics.incrementFailedTasks();
                             } else {
                                 if (result.status() != OperationStatus.SUCCESS) {
                                     processingMetrics.incrementFailedTasks();
                                 }
+                                task.complete(result, processingMetrics, duration);
                             }
                             if (result != null) {
                                 try {
@@ -153,7 +157,7 @@ public class WorkflowExecutorService {
                                     }
                                 } catch (Exception consumeEx) {
                                     log.error("Error delivering result for file {}",
-                                            task.getFile().fileId(), consumeEx);
+                                            task.file().fileId(), consumeEx);
                                 }
                             }
                         }))
@@ -192,25 +196,26 @@ public class WorkflowExecutorService {
      */
     private CompletableFuture<FileOperationResultModel> submitTask(FileTask task) {
         processingMetrics.incrementActiveTasks();
-        CompletableFuture<FileOperationResultModel> future = task.getFutureResult();
+        CompletableFuture<FileOperationResultModel> future = task.futureResult();
 
         threadPoolManager.submit(() -> {
             long start = System.currentTimeMillis();
             try {
                 FileOperationResultModel result = executeOperation(
-                        task.getFile(),
-                        task.getOperation().operationType());
+                        task.file(),
+                        task.operation().operationType());
                 future.complete(result);
+                task.complete(result, processingMetrics, System.currentTimeMillis() - start); // task-level metrics updated here
             } catch (Throwable t) {
                 log.error("Task failed for file {} op {}: {}",
-                        task.getFile().fileId(),
-                        task.getOperation().operationType(),
+                        task.file().fileId(),
+                        task.operation().operationType(),
                         t.getMessage(), t);
                 processingMetrics.incrementFailedTasks();
                 future.completeExceptionally(t);
             } finally {
                 long duration = System.currentTimeMillis() - start;
-                processingMetrics.addTaskDuration(duration);
+                processingMetrics.recordTaskCompletion(duration);
                 processingMetrics.decrementActiveTasks();
             }
         });

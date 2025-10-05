@@ -79,7 +79,7 @@ public class StreamFileOperationsService {
                 }
             } finally {
                 processingMetrics.decrementActiveRequests();
-                processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
+//                processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
                 log.info("Current Metrics: {}", processingMetrics);
             }
         });

@@ -6,6 +6,7 @@ import com.fileprocessing.FileSpec.OperationType;
 import com.fileprocessing.model.FileModel;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
+import com.fileprocessing.model.FileUploadRequestModel;
 import com.fileprocessing.util.ProtoConverter;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -31,8 +32,7 @@ public class UploadFilesService {
             Runnable onFailure,
             Runnable onCompletion) {
 
-        Map<String, List<OperationType>> fileOperationsMap = new HashMap<>();
-        List<FileModel> receivedFiles = new ArrayList<>();
+        List<FileUploadRequestModel> uploads = new ArrayList<>();
         boolean[] completedOrErrored = {false};
 
         return new StreamObserver<>() {
@@ -42,8 +42,8 @@ public class UploadFilesService {
                 if (completedOrErrored[0]) return;
                 try {
                     FileModel fileModel = ProtoConverter.toInternalFileModel(fileUploadRequest.getFile());
-                    receivedFiles.add(fileModel);
-                    fileOperationsMap.put(fileModel.fileId(), fileUploadRequest.getOperationsList());
+                    List<OperationType> operations = fileUploadRequest.getOperationsList();
+                    uploads.add(new FileUploadRequestModel(fileModel, operations));
                 } catch (Exception e) {
                     log.error("Error converting uploaded file", e);
                     onFailure.run();
@@ -73,14 +73,22 @@ public class UploadFilesService {
                 completedOrErrored[0] = true;
 
                 try {
+                    List<FileModel> files = uploads.stream()
+                            .map(FileUploadRequestModel::file)
+                            .toList();
+
+                    Map<String, List<OperationType>> fileOpsMap = new HashMap<>();
+                    for (FileUploadRequestModel req : uploads) {
+                        fileOpsMap.put(req.file().fileId(), req.operations());
+                    }
+
                     FileProcessingRequestModel requestModel =
-                            new FileProcessingRequestModel(receivedFiles, List.of(), fileOperationsMap);
+                            new FileProcessingRequestModel(files, List.of(), fileOpsMap);
 
                     FileProcessingSummaryModel summaryModel = processFileService.processFiles(requestModel);
-
                     FileProcessingSummary response = ProtoConverter.toProto(summaryModel);
 
-                    onSuccess.run(); // mark request success
+                    onSuccess.run();
 
                     responseObserver.onNext(response);
                     responseObserver.onCompleted();

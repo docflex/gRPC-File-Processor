@@ -6,40 +6,40 @@ import java.util.*;
 
 /**
  * Represents an internal request to process multiple files.
- * Immutable and safe for concurrent use.
+ * Immutable, validated, and thread-safe.
  */
-public record FileProcessingRequestModel(List<FileModel> files, List<OperationType> defaultOperations,
-                                         Map<String, List<OperationType>> fileSpecificOperations) {
+public record FileProcessingRequestModel(
+        List<FileModel> files,
+        List<OperationType> defaultOperations,
+        Map<String, List<OperationType>> fileSpecificOperations
+) {
 
     /**
-     * Constructor with validation and defensive copies.
+     * Compact constructor with validation and defensive copies.
      */
-    public FileProcessingRequestModel(List<FileModel> files,
-                                      List<OperationType> defaultOperations,
-                                      Map<String, List<OperationType>> fileSpecificOperations) {
-
+    public FileProcessingRequestModel {
         if (files == null || files.isEmpty()) {
             throw new IllegalArgumentException("files cannot be null or empty");
         }
-        this.files = List.copyOf(files);
+        files = List.copyOf(files);
 
-        this.defaultOperations = (defaultOperations != null)
+        defaultOperations = (defaultOperations != null)
                 ? List.copyOf(defaultOperations)
                 : Collections.emptyList();
 
         if (fileSpecificOperations != null) {
-            Map<String, List<OperationType>> tempMap = new HashMap<>();
+            Map<String, List<OperationType>> copy = new HashMap<>();
             for (Map.Entry<String, List<OperationType>> entry : fileSpecificOperations.entrySet()) {
-                tempMap.put(entry.getKey(), List.copyOf(entry.getValue()));
+                copy.put(entry.getKey(), List.copyOf(entry.getValue()));
             }
-            this.fileSpecificOperations = Collections.unmodifiableMap(tempMap);
+            fileSpecificOperations = Collections.unmodifiableMap(copy);
         } else {
-            this.fileSpecificOperations = Collections.emptyMap();
+            fileSpecificOperations = Collections.emptyMap();
         }
     }
 
     /**
-     * Builder pattern for easier construction.
+     * Builder for easier construction.
      */
     public static FileProcessingRequestModelBuilder builder() {
         return new FileProcessingRequestModelBuilder();
@@ -67,6 +67,13 @@ public record FileProcessingRequestModel(List<FileModel> files, List<OperationTy
         public FileProcessingRequestModelBuilder defaultOperations(List<OperationType> operations) {
             if (operations != null) {
                 this.defaultOperations.addAll(operations);
+            }
+            return this;
+        }
+
+        public FileProcessingRequestModelBuilder addDefaultOperation(OperationType operation) {
+            if (operation != null) {
+                this.defaultOperations.add(operation);
             }
             return this;
         }
