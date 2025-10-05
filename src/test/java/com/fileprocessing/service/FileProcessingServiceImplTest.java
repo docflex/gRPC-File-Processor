@@ -153,7 +153,7 @@ class FileProcessingServiceImplTest {
     }
 
     @Test
-    void streamFileOperations_NotImplementedYet() {
+    void streamFileOperations_DelegatesCorrectly() {
         // Given
         FileProcessingRequest request = FileProcessingRequest.newBuilder()
                 .addFiles(File.newBuilder()
@@ -171,21 +171,71 @@ class FileProcessingServiceImplTest {
 
         // Then
         verify(processingMetrics).incrementActiveRequests();
+        verify(streamFileOperationsService).streamFileOperations(any(FileProcessingRequestModel.class), eq(observer), anyLong());
+        verify(processingMetrics, never()).incrementFailedRequests();
+    }
+
+    @Test
+    void streamFileOperations_HandlesExceptions() {
+        // Given
+        FileProcessingRequest request = FileProcessingRequest.newBuilder()
+                .addFiles(File.newBuilder()
+                        .setFileId("test-id")
+                        .setFileName("test.txt")
+                        .build())
+                .build();
+        @SuppressWarnings("unchecked")
+        StreamObserver<FileOperationResult> observer = mock(StreamObserver.class);
+
+        RuntimeException expectedException = new RuntimeException("Test exception");
+        doThrow(expectedException).when(streamFileOperationsService)
+            .streamFileOperations(any(), any(), anyLong());
+
+        // When
+        service.streamFileOperations(request, observer);
+
+        // Then
+        verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).incrementFailedRequests();
         verify(processingMetrics).decrementActiveRequests();
         verify(processingMetrics).addRequestDuration(anyLong());
 
         ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
         verify(observer).onError(errorCaptor.capture());
-
         StatusRuntimeException capturedError = errorCaptor.getValue();
-        assertEquals(Status.Code.UNIMPLEMENTED, capturedError.getStatus().getCode());
-        verify(observer, never()).onNext(any());
-        verify(observer, never()).onCompleted();
+        assertEquals(Status.Code.INTERNAL, capturedError.getStatus().getCode());
+        assertTrue(capturedError.getMessage().contains("Test exception"));
     }
 
     @Test
-    void uploadFiles_NotImplementedYet() {
+    void uploadFiles_DelegatesCorrectly() {
+        // Given
+        @SuppressWarnings("unchecked")
+        StreamObserver<FileUploadRequest> expectedStreamObserver = mock(StreamObserver.class);
+        when(uploadFilesService.uploadFiles(any(), any(), any(), any()))
+            .thenReturn(expectedStreamObserver);
+
+        // When
+        StreamObserver<FileUploadRequest> result = service.uploadFiles(responseObserver);
+
+        // Then
+        verify(processingMetrics).incrementActiveRequests();
+        verify(uploadFilesService).uploadFiles(
+            eq(responseObserver),
+            any(Runnable.class),
+            any(Runnable.class),
+            any(Runnable.class)
+        );
+        assertEquals(expectedStreamObserver, result);
+    }
+
+    @Test
+    void uploadFiles_HandlesExceptions() {
+        // Given
+        RuntimeException expectedException = new RuntimeException("Test exception");
+        when(uploadFilesService.uploadFiles(any(), any(), any(), any()))
+            .thenThrow(expectedException);
+
         // When
         StreamObserver<FileUploadRequest> result = service.uploadFiles(responseObserver);
 
@@ -197,19 +247,39 @@ class FileProcessingServiceImplTest {
 
         ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
         verify(responseObserver).onError(errorCaptor.capture());
-
         StatusRuntimeException capturedError = errorCaptor.getValue();
-        assertEquals(Status.Code.UNIMPLEMENTED, capturedError.getStatus().getCode());
-        verify(responseObserver, never()).onNext(any());
-        verify(responseObserver, never()).onCompleted();
-        assertNull(result);
+        assertEquals(Status.Code.INTERNAL, capturedError.getStatus().getCode());
+        assertTrue(capturedError.getMessage().contains("Test exception"));
+        assertNotNull(result); // Returns a no-op observer
     }
 
     @Test
-    void liveFileProcessing_NotImplementedYet() {
+    void liveFileProcessing_DelegatesCorrectly() {
         // Given
         @SuppressWarnings("unchecked")
         StreamObserver<FileOperationResult> observer = mock(StreamObserver.class);
+        StreamObserver<FileUploadRequest> expectedStreamObserver = mock(StreamObserver.class);
+        when(liveFileProcessingService.liveFileProcessing(observer)).thenReturn(expectedStreamObserver);
+
+        // When
+        StreamObserver<FileUploadRequest> result = service.liveFileProcessing(observer);
+
+        // Then
+        verify(processingMetrics).incrementActiveRequests();
+        verify(processingMetrics).decrementActiveRequests();
+        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(liveFileProcessingService).liveFileProcessing(observer);
+        assertEquals(expectedStreamObserver, result);
+        verify(processingMetrics, never()).incrementFailedRequests();
+    }
+
+    @Test
+    void liveFileProcessing_HandlesExceptions() {
+        // Given
+        @SuppressWarnings("unchecked")
+        StreamObserver<FileOperationResult> observer = mock(StreamObserver.class);
+        RuntimeException expectedException = new RuntimeException("Test exception");
+        when(liveFileProcessingService.liveFileProcessing(observer)).thenThrow(expectedException);
 
         // When
         StreamObserver<FileUploadRequest> result = service.liveFileProcessing(observer);
@@ -222,10 +292,9 @@ class FileProcessingServiceImplTest {
 
         ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
         verify(observer).onError(errorCaptor.capture());
-
         StatusRuntimeException capturedError = errorCaptor.getValue();
-        assertEquals(Status.Code.UNIMPLEMENTED, capturedError.getStatus().getCode());
-        verifyNoMoreInteractions(observer);
+        assertEquals(Status.Code.INTERNAL, capturedError.getStatus().getCode());
+        assertTrue(capturedError.getMessage().contains("Test exception"));
         assertNull(result);
     }
 }

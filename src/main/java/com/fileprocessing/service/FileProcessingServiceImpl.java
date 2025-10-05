@@ -221,6 +221,16 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
 
         try {
             return liveFileProcessingService.liveFileProcessing(responseObserver);
+        } catch (Exception e) {
+            log.error("Error in live file processing", e);
+            processingMetrics.incrementFailedRequests();
+            responseObserver.onError(
+                    Status.INTERNAL
+                            .withDescription("Live file processing failed: " + e.getMessage())
+                            .withCause(e)
+                            .asRuntimeException()
+            );
+            return null;
         } finally {
             processingMetrics.decrementActiveRequests();
             processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
