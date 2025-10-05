@@ -1,14 +1,14 @@
 package com.fileprocessing.service;
 
 import com.fileprocessing.FileProcessingServiceGrpc.FileProcessingServiceImplBase;
-import com.fileprocessing.FileSpec.File;
-import com.fileprocessing.FileSpec.FileOperationResult;
-import com.fileprocessing.FileSpec.FileProcessingRequest;
-import com.fileprocessing.FileSpec.FileProcessingSummary;
+import com.fileprocessing.FileSpec.*;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
-import com.fileprocessing.service.monitoring.FileProcessingMetrics;
+import com.fileprocessing.service.grpc.LiveFileProcessingService;
 import com.fileprocessing.service.grpc.ProcessFileService;
+import com.fileprocessing.service.grpc.StreamFileOperationsService;
+import com.fileprocessing.service.grpc.UploadFilesService;
+import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import com.fileprocessing.util.ProtoConverter;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -23,22 +23,17 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
 
     private final FileProcessingMetrics processingMetrics;
     private final ProcessFileService processFileService;
-//    private final StreamFileOperationsService streamFileOperationsService;
-//    private final UploadFilesService uploadFilesService;
-//    private final LiveFileProcessingService liveFileProcessingService;
+    private final StreamFileOperationsService streamFileOperationsService;
+    private final UploadFilesService uploadFilesService;
+    private final LiveFileProcessingService liveFileProcessingService;
 
-    /**
-     * Unary RPC to process a batch of files.
-     * Step 1: Convert proto request to internal model
-     * Step 2: Delegate to ProcessFileService
-     * Step 3: Convert internal summary model to proto response
-     * Step 4: Send response via responseObserver
-     *
-     * @param fileProcessingRequest: The incoming gRPC request containing files and operations.
-     * @param responseObserver:      The gRPC stream observer to send the response.
-     */
+    // TODO: Rule of thumb
+    //  Outer service = translate request, delegate, update metrics.
+    //  Inner service = owns the lifecycle of the StreamObserver.
+
     @Override
-    public void processFile(FileProcessingRequest fileProcessingRequest, StreamObserver<FileProcessingSummary> responseObserver) {
+    public void processFile(FileProcessingRequest fileProcessingRequest,
+                            StreamObserver<FileProcessingSummary> responseObserver) {
         long startTime = System.currentTimeMillis();
         processingMetrics.incrementActiveRequests();
 
@@ -59,64 +54,111 @@ public class FileProcessingServiceImpl extends FileProcessingServiceImplBase {
             );
         } finally {
             processingMetrics.decrementActiveRequests();
-            processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
+            processingMetrics.recordRequestCompletion(System.currentTimeMillis() - startTime);
             log.info("Current Metrics: {}", processingMetrics);
         }
     }
 
     @Override
-    public void streamFileOperations(FileProcessingRequest fileProcessingRequest, StreamObserver<FileOperationResult> responseObserver) {
+    public void streamFileOperations(FileProcessingRequest request,
+                                     StreamObserver<FileOperationResult> responseObserver) {
         long startTime = System.currentTimeMillis();
         processingMetrics.incrementActiveRequests();
+
         try {
-            responseObserver.onError(
-                Status.UNIMPLEMENTED
-                    .withDescription("Stream file operations not implemented yet")
-                    .asRuntimeException()
-            );
+            FileProcessingRequestModel model = ProtoConverter.toInternalModel(request);
+            streamFileOperationsService.streamFileOperations(model, responseObserver, startTime);
+        } catch (Exception e) {
+            log.error("Error processing streamFileOperations", e);
             processingMetrics.incrementFailedRequests();
+            responseObserver.onError(
+                    Status.INTERNAL
+                            .withDescription("Streaming file processing failed: " + e.getMessage())
+                            .withCause(e)
+                            .asRuntimeException()
+            );
         } finally {
             processingMetrics.decrementActiveRequests();
-            processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
+            processingMetrics.recordRequestCompletion(System.currentTimeMillis() - startTime);
             log.info("Current Metrics: {}", processingMetrics);
         }
     }
 
+
     @Override
-    public StreamObserver<File> uploadFiles(StreamObserver<FileProcessingSummary> responseObserver) {
+    public StreamObserver<FileUploadRequest> uploadFiles(StreamObserver<FileProcessingSummary> responseObserver) {
         long startTime = System.currentTimeMillis();
         processingMetrics.incrementActiveRequests();
+
         try {
-            responseObserver.onError(
-                Status.UNIMPLEMENTED
-                    .withDescription("Upload files not implemented yet")
-                    .asRuntimeException()
+            return uploadFilesService.uploadFiles(
+                    responseObserver,
+                    () -> {
+                    }, // onSuccess, optional extra processing
+                    processingMetrics::incrementFailedRequests,  // onFailure
+                    () -> { // onCompletion
+                        processingMetrics.decrementActiveRequests();
+                        processingMetrics.recordRequestCompletion(System.currentTimeMillis() - startTime);
+                        log.info("Current Metrics: {}", processingMetrics);
+                    }
             );
+        } catch (Exception e) {
+            log.error("Error handling uploadFiles", e);
             processingMetrics.incrementFailedRequests();
-        } finally {
             processingMetrics.decrementActiveRequests();
-            processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
-            log.info("Current Metrics: {}", processingMetrics);
+            processingMetrics.recordRequestCompletion(System.currentTimeMillis() - startTime);
+            // Notify the client about the failure
+            responseObserver.onError(
+                    Status.INTERNAL
+                            .withDescription("Upload files failed: " + e.getMessage())
+                            .withCause(e)
+                            .asRuntimeException()
+            );
+
+            return getNoOpObserver();
         }
-        return null;
     }
 
     @Override
-    public StreamObserver<File> liveFileProcessing(StreamObserver<FileOperationResult> responseObserver) {
+    public StreamObserver<FileUploadRequest> liveFileProcessing(StreamObserver<FileOperationResult> responseObserver) {
         long startTime = System.currentTimeMillis();
         processingMetrics.incrementActiveRequests();
+        processingMetrics.incrementActiveTasks();
+
         try {
-            responseObserver.onError(
-                Status.UNIMPLEMENTED
-                    .withDescription("Live file processing not implemented yet")
-                    .asRuntimeException()
-            );
+            StreamObserver<FileUploadRequest> observer = liveFileProcessingService.liveFileProcessing(responseObserver);
+            if (observer != null) {
+                processingMetrics.recordTaskCompletion(System.currentTimeMillis() - startTime);
+                return observer;
+            }
+            return null;
+        } catch (Exception e) {
+            log.error("Error initializing live file processing", e);
             processingMetrics.incrementFailedRequests();
+            processingMetrics.incrementFailedTasks();
+            responseObserver.onError(
+                    Status.INTERNAL
+                            .withDescription("Live file processing failed: " + e.getMessage())
+                            .withCause(e)
+                            .asRuntimeException()
+            );
+            return null;
         } finally {
             processingMetrics.decrementActiveRequests();
-            processingMetrics.addRequestDuration(System.currentTimeMillis() - startTime);
+            processingMetrics.decrementActiveTasks();
+            processingMetrics.recordRequestCompletion(System.currentTimeMillis() - startTime);
             log.info("Current Metrics: {}", processingMetrics);
         }
-        return null;
     }
+
+    // Helpers
+
+    private <T> StreamObserver<T> getNoOpObserver() {
+        return new StreamObserver<>() {
+            @Override public void onNext(T value) {}
+            @Override public void onError(Throwable t) {}
+            @Override public void onCompleted() {}
+        };
+    }
+
 }

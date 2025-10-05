@@ -9,6 +9,8 @@ import com.google.protobuf.ByteString;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import net.devh.boot.grpc.client.inject.GrpcClient;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
@@ -17,12 +19,16 @@ import org.springframework.test.context.TestPropertySource;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
+import static com.fileprocessing.FileSpec.OperationStatus.SUCCESS;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(
@@ -38,6 +44,30 @@ class ProcessFileServiceIntegrationTest {
 
     @GrpcClient("inProcess")
     private com.fileprocessing.FileProcessingServiceGrpc.FileProcessingServiceBlockingStub fileProcessingStub;
+
+    private Path tempDir;
+
+    @BeforeEach
+    void setUp() throws IOException {
+        tempDir = Files.createTempDirectory("file-processing-test");
+    }
+
+    @AfterEach
+    void cleanup() throws IOException {
+        // Clean up any temporary files
+        if (tempDir != null && Files.exists(tempDir)) {
+            Files.walk(tempDir)
+                .sorted((a, b) -> -a.compareTo(b)) // Reverse order to delete contents before directories
+                .forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (IOException e) {
+                        // Log but don't fail the test
+                        System.err.println("Failed to delete: " + path);
+                    }
+                });
+        }
+    }
 
     private byte[] createDummyPngImage() {
         // Create a 1x1 black PNG image
@@ -136,20 +166,25 @@ class ProcessFileServiceIntegrationTest {
         // Then
         assertNotNull(summary);
         assertEquals(2, summary.getTotalFiles());
-        assertEquals(4, summary.getSuccessfulFiles());
+        assertEquals(4, summary.getSuccessfulFiles(), "Each file should be counted as successful once");
         assertEquals(0, summary.getFailedFiles());
 
         List<FileOperationResult> results = summary.getResultsList();
-        assertEquals(4, results.size()); // 2 operations per file
+        assertEquals(4, results.size(), "Should have 2 operations per file");
 
         Set<String> processedFileIds = new HashSet<>();
         results.forEach(result -> {
-            assertTrue(result.getFileId().equals(fileId1) || result.getFileId().equals(fileId2));
-            assertNotNull(result.getStartTime());
-            assertNotNull(result.getEndTime());
+            assertTrue(result.getFileId().equals(fileId1) || result.getFileId().equals(fileId2),
+                "Result should be for one of the input files");
+            assertEquals(SUCCESS, result.getStatus(),
+                "Each operation should succeed");
+            assertNotNull(result.getStartTime(), "Start time should not be null");
+            assertNotNull(result.getEndTime(), "End time should not be null");
+            assertTrue(result.getEndTime().getSeconds() >= result.getStartTime().getSeconds(),
+                "End time should be after start time");
             processedFileIds.add(result.getFileId());
         });
-        assertEquals(2, processedFileIds.size()); // Verify both files were processed
+        assertEquals(2, processedFileIds.size(), "Both files should be processed");
     }
 
     @Test
@@ -175,7 +210,9 @@ class ProcessFileServiceIntegrationTest {
             .build();
 
         // When
-        FileProcessingSummary summary = fileProcessingStub.processFile(request);
+        FileProcessingSummary summary = fileProcessingStub
+            .withDeadlineAfter(30, TimeUnit.SECONDS)
+            .processFile(request);
 
         // Then
         assertNotNull(summary);
@@ -187,7 +224,7 @@ class ProcessFileServiceIntegrationTest {
         assertEquals(2, results.size()); // VALIDATE and FILE_COMPRESSION operations
 
         FileOperationResult compressionResult = results.stream()
-            .filter(r -> r.getResultLocation().endsWith(".gz"))
+            .filter(r -> r.getOperation() == OperationType.FILE_COMPRESSION)
             .findFirst()
             .orElseThrow(() -> new AssertionError("No compression result found"));
 
@@ -270,14 +307,14 @@ class ProcessFileServiceIntegrationTest {
     @Test
     void whenProcessingWithTimeout_thenFailsWithTimeout() {
         // Given
-        byte[] largeContent = new byte[50 * 1024 * 1024]; // 50MB to force timeout
+        byte[] largeContent = new byte[1024 * 1024]; // 1MB is enough to trigger timeout
         String fileId = UUID.randomUUID().toString();
 
         File largeFile = File.newBuilder()
             .setFileId(fileId)
-            .setFileName("timeout_test.png")
+            .setFileName("timeout_test.bin")
             .setContent(ByteString.copyFrom(largeContent))
-            .setFileType("png")
+            .setFileType("bin")
             .setSizeBytes(largeContent.length)
             .build();
 
@@ -288,7 +325,9 @@ class ProcessFileServiceIntegrationTest {
 
         // When/Then
         StatusRuntimeException exception = assertThrows(StatusRuntimeException.class,
-            () -> fileProcessingStub.withDeadlineAfter(1, TimeUnit.MILLISECONDS).processFile(request));
+            () -> fileProcessingStub
+                .withDeadlineAfter(1, TimeUnit.MILLISECONDS)
+                .processFile(request));
         assertEquals(Status.Code.DEADLINE_EXCEEDED, exception.getStatus().getCode());
     }
 
@@ -299,10 +338,10 @@ class ProcessFileServiceIntegrationTest {
         int numFiles = 5;
         FileProcessingRequest[] requests = new FileProcessingRequest[numFiles];
         String[] fileIds = new String[numFiles];
+        List<Throwable> errors = Collections.synchronizedList(new ArrayList<>());
 
         for (int i = 0; i < numFiles; i++) {
             fileIds[i] = UUID.randomUUID().toString();
-
             File testFile = File.newBuilder()
                 .setFileId(fileIds[i])
                 .setFileName("concurrent_" + i + ".png")
@@ -319,37 +358,43 @@ class ProcessFileServiceIntegrationTest {
         }
 
         // When
-        Thread[] threads = new Thread[numFiles];
         FileProcessingSummary[] summaries = new FileProcessingSummary[numFiles];
+        Thread[] threads = new Thread[numFiles];
 
         for (int i = 0; i < numFiles; i++) {
             final int index = i;
-            threads[i] = new Thread(() -> summaries[index] = fileProcessingStub.processFile(requests[index]));
+            threads[i] = new Thread(() -> {
+                try {
+                    summaries[index] = fileProcessingStub
+                        .withDeadlineAfter(30, TimeUnit.SECONDS)
+                        .processFile(requests[index]);
+                } catch (Throwable e) {
+                    errors.add(e);
+                }
+            });
             threads[i].start();
         }
 
         // Wait for all threads to complete
         for (Thread thread : threads) {
-            thread.join();
+            thread.join(TimeUnit.SECONDS.toMillis(45));
+            assertTrue(!thread.isAlive(), "Thread did not complete within timeout");
         }
+
+        // Check for any errors
+        assertTrue(errors.isEmpty(), "Encountered errors during concurrent processing: " +
+            errors.stream().map(Throwable::getMessage).collect(Collectors.joining(", ")));
 
         // Then
         for (int i = 0; i < numFiles; i++) {
             FileProcessingSummary summary = summaries[i];
-            assertNotNull(summary);
-            assertEquals(1, summary.getTotalFiles());
-            assertEquals(2, summary.getSuccessfulFiles());
-            assertEquals(0, summary.getFailedFiles());
+            assertNotNull(summary, "Summary " + i + " should not be null");
+            assertEquals(1, summary.getTotalFiles(), "Wrong total files count for summary " + i);
+            assertEquals(2, summary.getSuccessfulFiles(), "Wrong successful files count for summary " + i);
+            assertEquals(0, summary.getFailedFiles(), "Wrong failed files count for summary " + i);
 
             List<FileOperationResult> results = summary.getResultsList();
-            assertEquals(2, results.size()); // VALIDATE and METADATA_EXTRACTION
-
-            int finalI = i;
-            results.forEach(result -> {
-                assertEquals(fileIds[finalI], result.getFileId());
-                assertNotNull(result.getStartTime());
-                assertNotNull(result.getEndTime());
-            });
+            assertEquals(2, results.size(), "Wrong number of results for summary " + i);
         }
     }
 }

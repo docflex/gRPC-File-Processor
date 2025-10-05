@@ -6,34 +6,28 @@ import java.util.List;
 
 /**
  * Represents a summary of multiple file processing operations.
- * Immutable and thread-safe.
+ * Immutable, validated, and thread-safe.
  */
-public record FileProcessingSummaryModel(int totalFiles, int successfulFiles, int failedFiles,
-                                         List<FileOperationResultModel> results) {
+public record FileProcessingSummaryModel(
+        int totalFiles,
+        int successfulFiles,
+        int failedFiles,
+        List<FileOperationResultModel> results
+) {
 
     /**
-     * Constructor with validation and defensive copy.
+     * Compact constructor with validation and defensive copy.
      */
-    public FileProcessingSummaryModel(int totalFiles,
-                                      int successfulFiles,
-                                      int failedFiles,
-                                      List<FileOperationResultModel> results) {
-
+    public FileProcessingSummaryModel {
         if (totalFiles < 0 || successfulFiles < 0 || failedFiles < 0) {
             throw new IllegalArgumentException("File counts cannot be negative");
         }
-        if (results == null) {
-            results = Collections.emptyList();
-        }
 
-        this.totalFiles = totalFiles;
-        this.successfulFiles = successfulFiles;
-        this.failedFiles = failedFiles;
-        this.results = List.copyOf(results);
+        results = (results != null) ? List.copyOf(results) : Collections.emptyList();
     }
 
     /**
-     * Builder pattern for safer and flexible construction.
+     * Builder for easier and flexible construction.
      */
     public static FileProcessingSummaryModelBuilder builder() {
         return new FileProcessingSummaryModelBuilder();
@@ -71,6 +65,18 @@ public record FileProcessingSummaryModel(int totalFiles, int successfulFiles, in
             if (result != null) {
                 this.results.add(result);
             }
+            return this;
+        }
+
+        public FileProcessingSummaryModelBuilder incrementSuccess() {
+            this.successfulFiles++;
+            this.totalFiles++;
+            return this;
+        }
+
+        public FileProcessingSummaryModelBuilder incrementFailure() {
+            this.failedFiles++;
+            this.totalFiles++;
             return this;
         }
 

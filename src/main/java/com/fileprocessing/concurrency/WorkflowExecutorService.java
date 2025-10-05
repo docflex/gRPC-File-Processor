@@ -3,9 +3,9 @@ package com.fileprocessing.concurrency;
 import com.fileprocessing.FileSpec.OperationStatus;
 import com.fileprocessing.FileSpec.OperationType;
 import com.fileprocessing.model.*;
-import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import com.fileprocessing.model.concurrency.FileTask;
 import com.fileprocessing.model.concurrency.FileWorkflow;
+import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import com.fileprocessing.util.FileOperations;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /**
  * Executes file operations concurrently using a ThreadPoolManager.
@@ -56,8 +57,8 @@ public class WorkflowExecutorService {
         List<CompletableFuture<FileOperationResultModel>> futures = tasks.stream()
                 .map(task -> submitTask(task)
                         .exceptionally(ex -> createFailedResult(
-                                task.getFile().fileId(),
-                                task.getOperation().operationType(),
+                                task.file().fileId(),
+                                task.operation().operationType(),
                                 ex)))
                 .toList();
 
@@ -70,9 +71,15 @@ public class WorkflowExecutorService {
                 .map(CompletableFuture::join)
                 .toList();
 
-        long successCount = results.stream()
-                .filter(r -> r.status() == OperationStatus.SUCCESS)
-                .count();
+        long successCount = 0;
+
+        for (FileOperationResultModel result : results) {
+            if (result.status() == OperationStatus.SUCCESS) {
+                successCount++;
+            } else {
+                processingMetrics.incrementFailedTasks();
+            }
+        }
 
         return FileProcessingSummaryModel.builder()
                 .totalFiles(requestModel.files().size())
@@ -80,6 +87,84 @@ public class WorkflowExecutorService {
                 .failedFiles(results.size() - (int) successCount)
                 .results(results)
                 .build();
+    }
+
+    /**
+     * Processes a workflow in streaming mode.
+     * <p>
+     * Each file operation result is pushed to the provided callback as soon as it completes,
+     * allowing clients to receive results in real-time instead of waiting for the entire batch.
+     * </p>
+     *
+     * <p><b>Error Handling:</b>
+     * <ul>
+     *     <li>If an individual task fails, a failed {@link FileOperationResultModel} is
+     *         generated and delivered to the consumer.</li>
+     *     <li>If an exception occurs while delivering the result to the consumer, it is
+     *         logged but does not interrupt other tasks.</li>
+     *     <li>Internal variable reassignment is avoided to comply with Java lambda rules
+     *         by using a final local variable for the result.</li>
+     * </ul>
+     * </p>
+     *
+     * <p><b>Thread Safety:</b>
+     * <ul>
+     *     <li>Writes to the resultConsumer are serialized using an internal lock to avoid
+     *         concurrent write issues (especially important for gRPC streaming).</li>
+     * </ul>
+     * </p>
+     *
+     * <p><b>Completion:</b> The returned {@link CompletableFuture} completes when all tasks
+     * (successful or failed) have been processed and delivered to the consumer.</p>
+     *
+     * @param requestModel   the internal request model containing files and requested operations
+     * @param resultConsumer a callback invoked with each {@link FileOperationResultModel} as soon as it is available
+     * @return a {@link CompletableFuture} that completes when all file operations have been processed and delivered
+     */
+    public CompletableFuture<Void> processWorkflowStreamed(FileProcessingRequestModel requestModel,
+                                                           Consumer<FileOperationResultModel> resultConsumer) {
+        List<FileTask> tasks = buildFileTasks(requestModel);
+
+        if (tasks.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        Object writeLock = new Object(); // ensure single-thread writes
+
+        // Submit all tasks
+        long startTime = System.currentTimeMillis();
+        List<CompletableFuture<FileOperationResultModel>> futures = tasks.stream()
+                .map(task -> submitTask(task)
+                        .whenComplete((result, ex) -> {
+                            long duration = System.currentTimeMillis() - startTime;
+                            if (ex != null) {
+                                result = createFailedResult(
+                                        task.file().fileId(),
+                                        task.operation().operationType(),
+                                        ex);
+                                task.completeExceptionally(ex, processingMetrics, duration);
+                                processingMetrics.incrementFailedTasks();
+                            } else {
+                                if (result.status() != OperationStatus.SUCCESS) {
+                                    processingMetrics.incrementFailedTasks();
+                                }
+                                task.complete(result, processingMetrics, duration);
+                            }
+                            if (result != null) {
+                                try {
+                                    synchronized (writeLock) {
+                                        resultConsumer.accept(result);
+                                    }
+                                } catch (Exception consumeEx) {
+                                    log.error("Error delivering result for file {}",
+                                            task.file().fileId(), consumeEx);
+                                }
+                            }
+                        }))
+                .toList();
+
+        // Return a future that completes when all results are delivered
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
 
     /**
@@ -111,25 +196,26 @@ public class WorkflowExecutorService {
      */
     private CompletableFuture<FileOperationResultModel> submitTask(FileTask task) {
         processingMetrics.incrementActiveTasks();
-        CompletableFuture<FileOperationResultModel> future = task.getFutureResult();
+        CompletableFuture<FileOperationResultModel> future = task.futureResult();
 
         threadPoolManager.submit(() -> {
             long start = System.currentTimeMillis();
             try {
                 FileOperationResultModel result = executeOperation(
-                        task.getFile(),
-                        task.getOperation().operationType());
+                        task.file(),
+                        task.operation().operationType());
                 future.complete(result);
+                task.complete(result, processingMetrics, System.currentTimeMillis() - start); // task-level metrics updated here
             } catch (Throwable t) {
                 log.error("Task failed for file {} op {}: {}",
-                        task.getFile().fileId(),
-                        task.getOperation().operationType(),
+                        task.file().fileId(),
+                        task.operation().operationType(),
                         t.getMessage(), t);
                 processingMetrics.incrementFailedTasks();
                 future.completeExceptionally(t);
             } finally {
                 long duration = System.currentTimeMillis() - start;
-                processingMetrics.addTaskDuration(duration);
+                processingMetrics.recordTaskCompletion(duration);
                 processingMetrics.decrementActiveTasks();
             }
         });

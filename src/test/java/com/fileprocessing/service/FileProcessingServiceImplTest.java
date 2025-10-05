@@ -1,11 +1,15 @@
 package com.fileprocessing.service;
 
+import com.fileprocessing.FileSpec.FileUploadRequest;
 import com.fileprocessing.FileSpec.File;
 import com.fileprocessing.FileSpec.FileOperationResult;
 import com.fileprocessing.FileSpec.FileProcessingRequest;
 import com.fileprocessing.FileSpec.FileProcessingSummary;
 import com.fileprocessing.model.FileProcessingRequestModel;
 import com.fileprocessing.model.FileProcessingSummaryModel;
+import com.fileprocessing.service.grpc.LiveFileProcessingService;
+import com.fileprocessing.service.grpc.StreamFileOperationsService;
+import com.fileprocessing.service.grpc.UploadFilesService;
 import com.fileprocessing.service.monitoring.FileProcessingMetrics;
 import com.fileprocessing.service.grpc.ProcessFileService;
 import io.grpc.Status;
@@ -35,13 +39,22 @@ class FileProcessingServiceImplTest {
     private ProcessFileService processFileService;
 
     @Mock
+    private StreamFileOperationsService streamFileOperationsService;
+
+    @Mock
+    private UploadFilesService uploadFilesService;
+
+    @Mock
+    private LiveFileProcessingService liveFileProcessingService;
+
+    @Mock
     private StreamObserver<FileProcessingSummary> responseObserver;
 
     private FileProcessingServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new FileProcessingServiceImpl(processingMetrics, processFileService);
+        service = new FileProcessingServiceImpl(processingMetrics, processFileService, streamFileOperationsService, uploadFilesService, liveFileProcessingService);
     }
 
     @Test
@@ -71,7 +84,7 @@ class FileProcessingServiceImplTest {
         // Then
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
         verify(processingMetrics, never()).incrementFailedRequests();
 
         verify(responseObserver).onNext(any(FileProcessingSummary.class));
@@ -101,7 +114,7 @@ class FileProcessingServiceImplTest {
         // Then
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
         verify(processingMetrics).incrementFailedRequests();
 
         verify(responseObserver, never()).onNext(any());
@@ -136,11 +149,11 @@ class FileProcessingServiceImplTest {
         // Then
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
     }
 
     @Test
-    void streamFileOperations_NotImplementedYet() {
+    void streamFileOperations_DelegatesCorrectly() {
         // Given
         FileProcessingRequest request = FileProcessingRequest.newBuilder()
                 .addFiles(File.newBuilder()
@@ -158,61 +171,130 @@ class FileProcessingServiceImplTest {
 
         // Then
         verify(processingMetrics).incrementActiveRequests();
-        verify(processingMetrics).incrementFailedRequests();
-        verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
-
-        ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
-        verify(observer).onError(errorCaptor.capture());
-
-        StatusRuntimeException capturedError = errorCaptor.getValue();
-        assertEquals(Status.Code.UNIMPLEMENTED, capturedError.getStatus().getCode());
-        verify(observer, never()).onNext(any());
-        verify(observer, never()).onCompleted();
+        verify(streamFileOperationsService).streamFileOperations(any(FileProcessingRequestModel.class), eq(observer), anyLong());
+        verify(processingMetrics, never()).incrementFailedRequests();
     }
 
     @Test
-    void uploadFiles_NotImplementedYet() {
-        // When
-        StreamObserver<File> result = service.uploadFiles(responseObserver);
-
-        // Then
-        verify(processingMetrics).incrementActiveRequests();
-        verify(processingMetrics).incrementFailedRequests();
-        verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
-
-        ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
-        verify(responseObserver).onError(errorCaptor.capture());
-
-        StatusRuntimeException capturedError = errorCaptor.getValue();
-        assertEquals(Status.Code.UNIMPLEMENTED, capturedError.getStatus().getCode());
-        verify(responseObserver, never()).onNext(any());
-        verify(responseObserver, never()).onCompleted();
-        assertNull(result);
-    }
-
-    @Test
-    void liveFileProcessing_NotImplementedYet() {
+    void streamFileOperations_HandlesExceptions() {
         // Given
+        FileProcessingRequest request = FileProcessingRequest.newBuilder()
+                .addFiles(File.newBuilder()
+                        .setFileId("test-id")
+                        .setFileName("test.txt")
+                        .build())
+                .build();
         @SuppressWarnings("unchecked")
         StreamObserver<FileOperationResult> observer = mock(StreamObserver.class);
 
+        RuntimeException expectedException = new RuntimeException("Test exception");
+        doThrow(expectedException).when(streamFileOperationsService)
+            .streamFileOperations(any(), any(), anyLong());
+
         // When
-        StreamObserver<File> result = service.liveFileProcessing(observer);
+        service.streamFileOperations(request, observer);
 
         // Then
         verify(processingMetrics).incrementActiveRequests();
         verify(processingMetrics).incrementFailedRequests();
         verify(processingMetrics).decrementActiveRequests();
-        verify(processingMetrics).addRequestDuration(anyLong());
+        verify(processingMetrics).recordRequestCompletion(anyLong());
 
         ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
         verify(observer).onError(errorCaptor.capture());
-
         StatusRuntimeException capturedError = errorCaptor.getValue();
-        assertEquals(Status.Code.UNIMPLEMENTED, capturedError.getStatus().getCode());
-        verifyNoMoreInteractions(observer);
+        assertEquals(Status.Code.INTERNAL, capturedError.getStatus().getCode());
+        assertTrue(capturedError.getMessage().contains("Test exception"));
+    }
+
+    @Test
+    void uploadFiles_DelegatesCorrectly() {
+        // Given
+        @SuppressWarnings("unchecked")
+        StreamObserver<FileUploadRequest> expectedStreamObserver = mock(StreamObserver.class);
+        when(uploadFilesService.uploadFiles(any(), any(), any(), any()))
+            .thenReturn(expectedStreamObserver);
+
+        // When
+        StreamObserver<FileUploadRequest> result = service.uploadFiles(responseObserver);
+
+        // Then
+        verify(processingMetrics).incrementActiveRequests();
+        verify(uploadFilesService).uploadFiles(
+            eq(responseObserver),
+            any(Runnable.class),
+            any(Runnable.class),
+            any(Runnable.class)
+        );
+        assertEquals(expectedStreamObserver, result);
+    }
+
+    @Test
+    void uploadFiles_HandlesExceptions() {
+        // Given
+        RuntimeException expectedException = new RuntimeException("Test exception");
+        when(uploadFilesService.uploadFiles(any(), any(), any(), any()))
+            .thenThrow(expectedException);
+
+        // When
+        StreamObserver<FileUploadRequest> result = service.uploadFiles(responseObserver);
+
+        // Then
+        verify(processingMetrics).incrementActiveRequests();
+        verify(processingMetrics).incrementFailedRequests();
+        verify(processingMetrics).decrementActiveRequests();
+        verify(processingMetrics).recordRequestCompletion(anyLong());
+
+        ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
+        verify(responseObserver).onError(errorCaptor.capture());
+        StatusRuntimeException capturedError = errorCaptor.getValue();
+        assertEquals(Status.Code.INTERNAL, capturedError.getStatus().getCode());
+        assertTrue(capturedError.getMessage().contains("Test exception"));
+        assertNotNull(result); // Returns a no-op observer
+    }
+
+    @Test
+    void liveFileProcessing_DelegatesCorrectly() {
+        // Given
+        @SuppressWarnings("unchecked")
+        StreamObserver<FileOperationResult> observer = mock(StreamObserver.class);
+        StreamObserver<FileUploadRequest> expectedStreamObserver = mock(StreamObserver.class);
+        when(liveFileProcessingService.liveFileProcessing(observer)).thenReturn(expectedStreamObserver);
+
+        // When
+        StreamObserver<FileUploadRequest> result = service.liveFileProcessing(observer);
+
+        // Then
+        verify(processingMetrics).incrementActiveRequests();
+        verify(processingMetrics).decrementActiveRequests();
+        verify(processingMetrics).recordRequestCompletion(anyLong());
+        verify(liveFileProcessingService).liveFileProcessing(observer);
+        assertEquals(expectedStreamObserver, result);
+        verify(processingMetrics, never()).incrementFailedRequests();
+    }
+
+    @Test
+    void liveFileProcessing_HandlesExceptions() {
+        // Given
+        @SuppressWarnings("unchecked")
+        StreamObserver<FileOperationResult> observer = mock(StreamObserver.class);
+        RuntimeException expectedException = new RuntimeException("Test exception");
+        when(liveFileProcessingService.liveFileProcessing(observer)).thenThrow(expectedException);
+
+        // When
+        StreamObserver<FileUploadRequest> result = service.liveFileProcessing(observer);
+
+        // Then
+        verify(processingMetrics).incrementActiveRequests();
+        verify(processingMetrics).incrementFailedRequests();
+        verify(processingMetrics).decrementActiveRequests();
+        verify(processingMetrics).recordRequestCompletion(anyLong());
+
+        ArgumentCaptor<StatusRuntimeException> errorCaptor = ArgumentCaptor.forClass(StatusRuntimeException.class);
+        verify(observer).onError(errorCaptor.capture());
+        StatusRuntimeException capturedError = errorCaptor.getValue();
+        assertEquals(Status.Code.INTERNAL, capturedError.getStatus().getCode());
+        assertTrue(capturedError.getMessage().contains("Test exception"));
         assertNull(result);
     }
 }

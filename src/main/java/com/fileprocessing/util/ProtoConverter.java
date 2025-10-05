@@ -1,10 +1,7 @@
 package com.fileprocessing.util;
 
 import com.fileprocessing.FileSpec.*;
-import com.fileprocessing.model.FileModel;
-import com.fileprocessing.model.FileOperationResultModel;
-import com.fileprocessing.model.FileProcessingRequestModel;
-import com.fileprocessing.model.FileProcessingSummaryModel;
+import com.fileprocessing.model.*;
 
 import java.time.Instant;
 import java.util.List;
@@ -37,7 +34,7 @@ public final class ProtoConverter {
                 .build();
     }
 
-    private static FileModel toInternalFileModel(File fileProto) {
+    public static FileModel toInternalFileModel(File fileProto) {
         return FileModel.builder()
                 .fileId(fileProto.getFileId())
                 .fileName(fileProto.getFileName())
@@ -46,6 +43,14 @@ public final class ProtoConverter {
                 .sizeBytes(fileProto.getSizeBytes())
                 .build();
     }
+
+    public static FileUploadRequestModel toInternalModel(FileUploadRequest request) {
+        return new FileUploadRequestModel(
+                toInternalFileModel(request.getFile()),
+                request.getOperationsList()
+        );
+    }
+
 
     // =======================
     // Response Conversions
@@ -58,13 +63,13 @@ public final class ProtoConverter {
                 .setFailedFiles(model.failedFiles())
                 .addAllResults(
                         model.results().stream()
-                                .map(ProtoConverter::toProtoResult)
+                                .map(ProtoConverter::toProto)
                                 .collect(Collectors.toList())
                 )
                 .build();
     }
 
-    private static FileOperationResult toProtoResult(FileOperationResultModel model) {
+    public static FileOperationResult toProto(FileOperationResultModel model) {
         return FileOperationResult.newBuilder()
                 .setFileId(model.fileId())
                 .setOperation(model.operationType())
@@ -81,6 +86,17 @@ public final class ProtoConverter {
                 .setResultLocation(model.resultLocation())
                 .build();
     }
+
+    public static File toProto(FileModel model) {
+        return File.newBuilder()
+                .setFileId(model.fileId())
+                .setFileName(model.fileName())
+                .setFileType(model.fileType())
+                .setSizeBytes(model.sizeBytes())
+                .setContent(com.google.protobuf.ByteString.copyFrom(model.content()))
+                .build();
+    }
+
 
     // =======================
     // Helpers

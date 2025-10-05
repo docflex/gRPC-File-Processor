@@ -54,6 +54,11 @@ message FileProcessingSummary {// Summary of multiple files
   repeated FileOperationResult results = 4;
 }
 
+message FileUploadRequest { // Request for client streaming upload
+  File file = 1;
+  repeated OperationType operations = 2;
+}
+
 // ----------------- Service Definition -----------------
 
 service FileProcessingService {
@@ -64,8 +69,8 @@ service FileProcessingService {
   rpc StreamFileOperations(FileProcessingRequest) returns (stream FileOperationResult);
 
   // Client streaming RPC for batch file processing
-  rpc UploadFiles(stream File) returns (FileProcessingSummary);
+  rpc UploadFiles(stream FileUploadRequest) returns (FileProcessingSummary);
 
   // Bidirectional streaming RPC for real-time file processing
-  rpc LiveFileProcessing(stream File) returns (stream FileOperationResult);
+  rpc LiveFileProcessing(stream FileUploadRequest) returns (stream FileOperationResult);
 }

@@ -103,6 +103,8 @@ This microservice is designed to:
     * Converts a workflow of tasks into concurrent submissions
     * Waits for all `CompletableFuture`s to complete
     * Aggregates results into a summary
+    * Tracks failed tasks based on `FileOperationResultModel.status()`, not only exceptions 
+    * Works in streaming mode, pushing results to a consumer as soon as they complete
 
 ---
 
@@ -166,7 +168,7 @@ grpcurl -plaintext -d '{
     {
       "fileId": "1",
       "fileName": "sample.txt",
-      "content": "SGVsbG8gd29ybGQ=",   // Base64 encoded content
+      "content": "SGVsbG8gd29ybGQ=",
       "fileType": "txt",
       "sizeBytes": 11
     }
@@ -175,7 +177,41 @@ grpcurl -plaintext -d '{
 }' localhost:9090 com.fileprocessing.FileProcessingService/ProcessFile
 ```
 
-### 5. Metrics
+### Streaming RPC Usage Example
+
+The streaming RPC `StreamFileOperations` allows the client to receive **results in real-time** as each file operation completes.
+
+### grpcurl Command
+
+```bash
+grpcurl -plaintext \
+  -d '{
+        "files": [
+          {
+            "fileId": "file-001",
+            "fileName": "example.pdf",
+            "content": "VGhpcyBpcyBhIHRlc3QgZmlsZSBjb250ZW50Lg==",
+            "fileType": "pdf",
+            "sizeBytes": 1024
+          },
+          {
+            "fileId": "file-002",
+            "fileName": "test.pdf",
+            "content": "VGhpcyBpcyBhbiBvdGhlciBmaWxlLg==",
+            "fileType": "pdf",
+            "sizeBytes": 2048
+          }
+        ],
+        "operations": ["VALIDATE","METADATA_EXTRACTION","FILE_COMPRESSION"]
+      }' \
+  localhost:9090 com.fileprocessing.FileProcessingService/StreamFileOperations
+```
+
+---
+
+
+
+## Metrics
 
 * Metrics tracked in `FileProcessingMetrics`
 * Active tasks and average task duration are updated in real-time
@@ -216,16 +252,93 @@ Client ---> gRPC Server ---> ProcessFileService ---> WorkflowExecutorService ---
 
 **Thread Pool / Concurrency**
 
+
+### 1. Workflow Execution (Unary RPC)
+
+```
+Client ---> gRPC Server ---> ProcessFileService ---> WorkflowExecutorService ---> ThreadPoolManager
+   |                       (Batch Mode)                     | 
+   |                                                        v
+   |                                               +----------------+
+   |                                               | FileTask 1     |
+   |                                               | FileTask 2     |
+   |                                               | ...            |
+   |                                               +----------------+
+   |                                                       |
+   |<------------------ FileProcessingSummaryModel --------|
+   |   - totalFiles                                     
+   |   - successfulFiles                                
+   |   - failedFiles                                     
+   |   - results (per task)
+```
+
+**Notes:**
+
+* Each `FileTask` is submitted to `ThreadPoolManager`.
+* `WorkflowExecutorService` waits for all tasks to complete.
+* Task-level failures are recorded in `FileProcessingMetrics`.
+* Summary includes both successful and failed tasks.
+
+---
+
+### 2. Workflow Execution (Streaming RPC)
+
+```
+Client ---> gRPC Server ---> ProcessFileService ---> WorkflowExecutorService ---> ThreadPoolManager
+   |                      (Streaming Mode)                  |
+   |                                                        v
+   |                                               +----------------+
+   |                                               | FileTask 1     |
+   |                                               | FileTask 2     |
+   |                                               | ...            |
+   |                                               +----------------+
+   |                                                        |
+   |                                                        v
+   |<--- FileOperationResult (task 1) ----------------------|
+   |                                                        |
+   |<--- FileOperationResult (task 2) ----------------------|
+   |                                                        |
+   |<--- FileOperationResult (failed task) -----------------|
+   |                                                        |
+   |<--- ... (as tasks complete) ---------------------------|
+   |                                                        |
+   |<--- Completion signal (observer.onCompleted) ----------|
+```
+
+**Notes:**
+
+* Each task is executed concurrently and **result is pushed immediately** to the client via `StreamObserver`.
+* Failed tasks are delivered as `FileOperationResult` with `status = FAILED`.
+* Metrics (`activeTasks`, `completedTasks`, `failedTasks`, `taskSuccessRatePercent`) are updated **per task**.
+* Stream continues even if some tasks fail (failure isolation).
+
+---
+
+### 3. Thread Pool / Concurrency with Metrics Tracking
+
 ```
 ThreadPoolManager
-+---------------------+
-| Queue (bounded)     |<-- Task submissions
-| Active Threads      |
-| Dynamic Resizing    |
-+---------------------+
-       |
-       v
-  FileTask.run() -> executes operation -> updates metrics
++------------------------+
+| Task Queue (bounded)   |<-- Tasks submitted by WorkflowExecutorService
+| Active Threads         |
+| Dynamic Resizing       |
++------------------------+
+            |
+            v
++------------------------+
+| FileTask.run()          |
+| - Execute operation     |
+| - Update result         |
+| - Update metrics:       |
+|   - completedTasks      |
+|   - failedTasks         |
+|   - taskDuration        |
++------------------------+
+            |
+            v
+WorkflowExecutorService collects:
+  - Success / Failure per task
+  - Aggregates metrics per workflow
 ```
 
 ---
@@ -347,9 +460,9 @@ MIT License — free to use and extend.
 
 ## **1. gRPC Services**
 
-* [ ] Implement `StreamFileOperations` (server streaming)
-* [ ] Implement `UploadFiles` (client streaming)
-* [ ] Implement `LiveFileProcessing` (bidirectional streaming)
+* [x] Implement `StreamFileOperations` (server streaming)
+* [x] Implement `UploadFiles` (client streaming)
+* [x] Implement `LiveFileProcessing` (bidirectional streaming)
 * [ ] Add request validation for all RPCs (check file size, type, operation support)
 * [ ] Support gRPC error handling with meaningful status codes
 
@@ -369,8 +482,8 @@ MIT License — free to use and extend.
 
 ## **3. Concurrency / Workflow**
 
-* [ ] Finalize `WorkflowExecutorService` integration for all gRPC endpoints
-* [ ] Add error handling for individual `FileTask`s without failing the whole workflow
+* [x] Finalize `WorkflowExecutorService` integration for all gRPC endpoints
+* [x] Add error handling for individual `FileTask`s without failing the whole workflow
 * [ ] Add **timeout support** for long-running tasks
 * [ ] Improve **backpressure** handling (queue thresholds, client notifications)
 
@@ -430,12 +543,11 @@ MIT License — free to use and extend.
 **Tasks:**
 
 1. Implement all placeholder operations in `ProcessFileService`:
-
-  * Validation
-  * Metadata extraction
-  * Compression
-  * Format conversion
-  * File storage
+   * Validation
+   * Metadata extraction
+   * Compression
+   * Format conversion
+   * File storage
 2. Ensure `ProcessFileService` is properly registered as a Spring Bean.
 3. Complete the unary gRPC endpoint (`processFile`) in `FileProcessingServiceImpl`.
 4. Add basic unit tests for operations.
@@ -447,7 +559,7 @@ MIT License — free to use and extend.
 
 ---
 
-## **Phase 2 — Concurrency & Workflow Management**
+## **[DELIVERED] Phase 2 — Concurrency & Workflow Management**
 
 **Goal:** Introduce `WorkflowExecutorService` for orchestrating tasks with thread pool management.
 
@@ -464,7 +576,7 @@ MIT License — free to use and extend.
 
 ---
 
-## **Phase 3 — Streaming gRPC Endpoints**
+## **[DELIVERED] Phase 3 — Streaming gRPC Endpoints**
 
 **Goal:** Implement non-unary RPCs for batch and real-time processing.
 
@@ -481,7 +593,23 @@ MIT License — free to use and extend.
 
 ---
 
-## **Phase 4 — Storage, Format, and OCR Enhancements**
+## **Phase 4 — Monitoring, Metrics, and Observability**
+
+**Goal:** Make the service observable and production-ready.
+
+**Tasks:**
+
+1. Expose metrics via Spring Actuator or Prometheus.
+2. Track workflow success/failure rates, average task duration.
+3. Add logging with SLF4J/Logback and structured logging.
+4. Optional: gRPC reflection for debugging.
+
+**Milestone Deliverable:**
+✅ Production-grade observability with metrics and logs.
+
+---
+
+## **Phase 5 — Storage, Format, and OCR Enhancements**
 
 **Goal:** Implement full file-processing logic beyond placeholders.
 
@@ -495,22 +623,6 @@ MIT License — free to use and extend.
 
 **Milestone Deliverable:**
 ✅ Fully-featured file-processing pipeline for supported file types.
-
----
-
-## **Phase 5 — Monitoring, Metrics, and Observability**
-
-**Goal:** Make the service observable and production-ready.
-
-**Tasks:**
-
-1. Expose metrics via Spring Actuator or Prometheus.
-2. Track workflow success/failure rates, average task duration.
-3. Add logging with SLF4J/Logback and structured logging.
-4. Optional: gRPC reflection for debugging.
-
-**Milestone Deliverable:**
-✅ Production-grade observability with metrics and logs.
 
 ---
 

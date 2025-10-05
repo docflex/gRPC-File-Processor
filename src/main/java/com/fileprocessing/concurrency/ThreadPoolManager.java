@@ -1,5 +1,7 @@
 package com.fileprocessing.concurrency;
 
+import com.fileprocessing.config.ThreadPoolProperties;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
@@ -20,41 +22,32 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 public final class ThreadPoolManager {
 
-    // TODO: Make all of these configurable via application properties and hot-reloadable
-    private static final int CPU_CORES = Runtime.getRuntime().availableProcessors();
-    private static final int CORE_POOL_SIZE = CPU_CORES;
-    private static final int MAX_POOL_SIZE = CPU_CORES * 4;
-    private static final int QUEUE_CAPACITY = 200;
-    private static final int QUEUE_THRESHOLD = 50; // triggers pool resize
-    private static final long THREAD_KEEP_ALIVE_SECONDS = 60;
-    // Singleton instance
-    private static final ThreadPoolManager INSTANCE = new ThreadPoolManager();
     private final ThreadPoolExecutor executor;
     private final ScheduledExecutorService monitor;
+    private final ThreadPoolProperties properties;
 
-    private ThreadPoolManager() {
+    public ThreadPoolManager(ThreadPoolProperties properties) {
+        this.properties = properties;
+
         this.executor = new ThreadPoolExecutor(
-                CORE_POOL_SIZE,
-                MAX_POOL_SIZE,
-                THREAD_KEEP_ALIVE_SECONDS,
+                properties.getCoreSize(),
+                properties.getMaxSize(),
+                properties.getKeepAliveSeconds(),
                 TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(QUEUE_CAPACITY), // bounded queue
+                new LinkedBlockingQueue<>(properties.getQueueCapacity()),
                 new FileProcessingThreadFactory(),
-                new ThreadPoolExecutor.CallerRunsPolicy() // backpressure: slow down client
+                new ThreadPoolExecutor.CallerRunsPolicy()
         );
-
-        // Allow core threads to time out when idle
         executor.allowCoreThreadTimeOut(true);
 
-        // Monitor pool and queue for adaptive resizing
         this.monitor = Executors.newSingleThreadScheduledExecutor(
                 r -> new Thread(r, "ThreadPoolMonitor")
         );
-        monitor.scheduleAtFixedRate(this::adjustPoolSize, 1, 1, TimeUnit.SECONDS);
-    }
-
-    public static ThreadPoolManager getInstance() {
-        return INSTANCE;
+        monitor.scheduleAtFixedRate(this::adjustPoolSize,
+                properties.getMonitorIntervalSeconds(),
+                properties.getMonitorIntervalSeconds(),
+                TimeUnit.SECONDS
+        );
     }
 
     /**
@@ -92,7 +85,9 @@ public final class ThreadPoolManager {
     /**
      * Gracefully shutdown executor and monitor.
      */
+    @PreDestroy
     public void shutdown() {
+        log.info("Shutting down ThreadPoolManager...");
         monitor.shutdownNow();
         executor.shutdown();
         try {
@@ -111,13 +106,18 @@ public final class ThreadPoolManager {
     private void adjustPoolSize() {
         int queueSize = executor.getQueue().size();
 
-        if (queueSize > QUEUE_THRESHOLD && executor.getMaximumPoolSize() < MAX_POOL_SIZE) {
-            int newMax = Math.min(MAX_POOL_SIZE, executor.getMaximumPoolSize() + 2);
+        if (queueSize > properties.getResizeThreshold() &&
+                executor.getMaximumPoolSize() < properties.getMaxSize()) {
+
+            int newMax = Math.min(properties.getMaxSize(), executor.getMaximumPoolSize() + 2);
             executor.setMaximumPoolSize(newMax);
             executor.setCorePoolSize(newMax / 2);
             log.info("[ThreadPoolManager] Increased pool size to {}", newMax);
-        } else if (queueSize < QUEUE_THRESHOLD / 2 && executor.getCorePoolSize() > CORE_POOL_SIZE) {
-            int newCore = Math.max(CORE_POOL_SIZE, executor.getCorePoolSize() - 1);
+
+        } else if (queueSize < properties.getResizeThreshold() / 2 &&
+                executor.getCorePoolSize() > properties.getCoreSize()) {
+
+            int newCore = Math.max(properties.getCoreSize(), executor.getCorePoolSize() - 1);
             executor.setCorePoolSize(newCore);
             executor.setMaximumPoolSize(newCore * 2);
             log.info("[ThreadPoolManager] Decreased pool size to {}", newCore);
