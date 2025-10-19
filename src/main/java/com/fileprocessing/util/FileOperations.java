@@ -111,6 +111,7 @@ public final class FileOperations {
         metadata.put("checksum", calculateChecksum(file.content()));
 
         try {
+            Thread.sleep(1700);
             if (file.isImage()) {
                 try (InputStream is = new ByteArrayInputStream(file.content())) {
                     BufferedImage image = ImageIO.read(is);
@@ -122,6 +123,8 @@ public final class FileOperations {
             }
         } catch (IOException e) {
             log.warn("Failed to extract image metadata for file: {}", file.fileName(), e);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
         log.info("Extracted metadata: {}", metadata);
@@ -153,6 +156,7 @@ public final class FileOperations {
     public static Path compressFile(@NotNull FileModel file) {
         Path tempDir;
         try {
+            Thread.sleep(1000);
             tempDir = Files.createTempDirectory("compressed_files");
             Path outputFile = tempDir.resolve(file.fileName() + ".gz");
 
@@ -164,7 +168,7 @@ public final class FileOperations {
             log.info("Compressed {} to {} (Original size: {}, Compressed size: {})",
                     file.fileName(), outputFile, file.sizeBytes(), Files.size(outputFile));
             return outputFile;
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             throw new RuntimeException("Failed to compress file: " + file.fileName(), e);
         }
     }

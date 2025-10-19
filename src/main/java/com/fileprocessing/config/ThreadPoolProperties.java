@@ -11,11 +11,11 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "fileprocessing.threadpool")
 public class ThreadPoolProperties {
 
-    private int coreSize = Runtime.getRuntime().availableProcessors();
-    private int maxSize = Runtime.getRuntime().availableProcessors() * 4;
-    private int queueCapacity = 200;
-    private int resizeThreshold = 50;
-    private long keepAliveSeconds = 60;
-    private long monitorIntervalSeconds = 10;
+    private int coreSize;
+    private int maxSize;
+    private int queueCapacity;
+    private int resizeThreshold;
+    private long keepAliveSeconds;
+    private long monitorIntervalSeconds;
 
 }

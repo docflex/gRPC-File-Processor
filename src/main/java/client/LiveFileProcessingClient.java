@@ -1,6 +1,7 @@
 package client;
 
 import com.fileprocessing.FileProcessingServiceGrpc;
+import com.fileprocessing.FileSpec;
 import com.fileprocessing.FileSpec.FileUploadRequest;
 import com.fileprocessing.FileSpec.File;
 import com.fileprocessing.FileSpec.FileOperationResult;
@@ -56,7 +57,7 @@ public class LiveFileProcessingClient {
 
         // Send multiple files with unique IDs and a delay to visualize streaming
         try {
-            int totalFiles = 10000;
+            int totalFiles = 500;
             for (int i = 1; i <= totalFiles; i++) {
                 File file = File.newBuilder()
                         .setFileId(String.format("file-%03d", i))
@@ -68,7 +69,7 @@ public class LiveFileProcessingClient {
 
                 FileUploadRequest request = FileUploadRequest.newBuilder()
                         .setFile(file)
-                        .addOperations(com.fileprocessing.FileSpec.OperationType.VALIDATE)
+                        .addOperations(FileSpec.OperationType.FILE_COMPRESSION)
                         .addOperations(com.fileprocessing.FileSpec.OperationType.METADATA_EXTRACTION)
                         .build();
 
@@ -76,7 +77,7 @@ public class LiveFileProcessingClient {
                 requestObserver.onNext(request);
 
                 // Delay to visualize streaming
-                Thread.sleep(250);
+                Thread.sleep(350);
             }
         } catch (Exception e) {
             requestObserver.onError(e);
@@ -87,7 +88,7 @@ public class LiveFileProcessingClient {
         requestObserver.onCompleted();
 
         // Wait for all results
-        latch.await(30, TimeUnit.SECONDS);
+        latch.await(10000, TimeUnit.SECONDS);
 
         channel.shutdown();
     }
