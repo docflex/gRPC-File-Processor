@@ -1,4 +1,3 @@
-
 # File Processing Microservice
 
 A scalable, concurrent, gRPC-based microservice for processing files with multiple operations such as validation, metadata extraction, OCR, compression, format conversion, image resizing, and storage.
@@ -9,11 +8,12 @@ A scalable, concurrent, gRPC-based microservice for processing files with multip
 2. [Architecture](#architecture)
 3. [Key Components](#key-components)
 4. [gRPC Services & Methods](#grpc-services--methods)
-5. [Usage](#usage)
-6. [Metrics](#metrics)
-7. [Limitations](#limitations)
-8. [Future Scope](#future-scope)
-9. [License](#license)
+5. [Grafana Dashboards](#grafana-dashboards)
+6. [Usage](#usage)
+7. [Metrics](#metrics)
+8. [Limitations](#limitations)
+9. [Future Scope](#future-scope)
+10. [License](#license)
 
 ---
 
@@ -77,7 +77,7 @@ This microservice is designed to:
 ### 1. **Models**
 
 | Model                        | Purpose                                                                |
-| ---------------------------- | ---------------------------------------------------------------------- |
+|------------------------------|------------------------------------------------------------------------|
 | `FileModel`                  | Immutable file representation (name, content, type, size)              |
 | `FileOperation`              | Encapsulates a single operation on a file with optional parameters     |
 | `FileOperationResultModel`   | Captures status, timestamps, and result location of an operation       |
@@ -129,6 +129,136 @@ Operations are now implemented in a utility class `FileOperationsUtil`:
 | `LiveFileProcessing`   | Bidirectional Streaming | Real-time streaming of file operations and results.     |
 
 **Server Reflection** is enabled, allowing `grpcurl` to inspect services without `.proto` files.
+
+---
+
+## Grafana Dashboards
+
+Below are suggested Grafana dashboard panels and example Prometheus queries for monitoring the thread pool and workflow metrics. The repository includes five dashboard screenshots in the `public/` folder — add them to a Grafana dashboard or view them here as reference:
+
+1. Base State
+
+![Base State](./public/1.%20Base%20State.png)
+
+2. Load Spike Taking Place
+
+![Load Spike Taking Place](./public/2.%20Load%20Spike.png)
+
+3. Prolonged Load
+
+![Prolonged Load](./public/3.%20Increasing%20Load.png)
+
+4. Resize Mechanism Triggered for Pool Size
+
+![Resize Mechanism Triggered for Pool Size](./public/4.%20Resize%20Mechanism%20Triggered.png)
+
+5. After the Cooldown, pool resizes to core size limit
+
+![After Cooldown - Resized to Core Pool](./public/5.%20Resized%20to%20Core%20Pool.png)
+
+Notes / Assumptions
+
+* Metrics logged in the code use dot notation (for example `fileprocessing.threadpool.active`). When exported to Prometheus via Micrometer the metric names are expected to be converted to snake_case (e.g. `fileprocessing_threadpool_active`). The PromQL examples below use the underscore form — adjust if your exporter uses a different naming convention.
+* If you expose configuration values as metrics (recommended) you can reference them in alerts; otherwise use the literal values shown below.
+
+Thread pool config (used for the dashboard behavior)
+
+```
+fileprocessing.threadpool.core-size=4
+fileprocessing.threadpool.max-size=16
+fileprocessing.threadpool.queue-capacity=200
+fileprocessing.threadpool.resize-threshold=65
+fileprocessing.threadpool.keep-alive-seconds=60
+fileprocessing.threadpool.monitor-interval-seconds=1
+```
+
+Recommended Grafana panels and PromQL queries
+
+- Active Threads (Gauge / Time series)
+    - Metric: `fileprocessing_threadpool_active`
+    - Panel: Time series (line)
+    - Color: Orange / Yellow
+    - PromQL: `fileprocessing_threadpool_active`
+    - Alert rule (example): `fileprocessing_threadpool_active > fileprocessing_threadpool_size * 0.9` (fires when > 90% of current pool size)
+
+- Queue Size (Time series)
+    - Metric: `fileprocessing_threadpool_queue`
+    - Panel: Time series (line)
+    - Color: Red when queue > threshold
+    - PromQL: `fileprocessing_threadpool_queue`
+    - Alert rule (example): `fileprocessing_threadpool_queue > 0.8 * 200` (assumes queue capacity = 200; if you export capacity as a metric use `fileprocessing_threadpool_queue_capacity` instead)
+
+- Pool Size (Time series)
+    - Metric: `fileprocessing_threadpool_size`
+    - Panel: Time series (line)
+    - PromQL: `fileprocessing_threadpool_size`
+    - Notes: Overlay current pool size with `fileprocessing_threadpool_largest` (peak) to see growth
+
+- Largest Pool Size (Single Stat / Gauge)
+    - Metric: `fileprocessing_threadpool_largest`
+    - Panel: Stat / Gauge
+    - PromQL: `fileprocessing_threadpool_largest`
+    - Notes: Shows peak threads used since process start
+
+- Completed Tasks & Total Tasks Submitted (Time series)
+    - Metrics: `fileprocessing_threadpool_completed`, `fileprocessing_threadpool_submitted_total`
+    - Panel: Time series (multi-line)
+    - PromQL: `rate(fileprocessing_threadpool_submitted_total[1m])` and `rate(fileprocessing_threadpool_completed[1m])` for throughput; use raw counters for totals
+    - Throughput / Pending calculation: `fileprocessing_threadpool_submitted_total - fileprocessing_threadpool_completed = pending_tasks`
+
+Example Prometheus alerts (suggested)
+
+1) High active threads relative to pool size
+
+Expression:
+```
+fileprocessing_threadpool_active > fileprocessing_threadpool_size * 0.9
+```
+For alerting, wrap in `avg_over_time` or require for a duration, e.g.:
+```
+max_over_time((fileprocessing_threadpool_active > fileprocessing_threadpool_size * 0.9)[5m:])
+```
+
+2) Queue saturation
+
+Expression (literal capacity example):
+```
+fileprocessing_threadpool_queue > 0.8 * 200
+```
+If you export `fileprocessing_threadpool_queue_capacity` as a metric, prefer:
+```
+fileprocessing_threadpool_queue > 0.8 * fileprocessing_threadpool_queue_capacity
+```
+
+3) Pending tasks steadily increasing (possible backpressure)
+
+Expression (rate-based):
+```
+increase(fileprocessing_threadpool_submitted_total[5m]) - increase(fileprocessing_threadpool_completed[5m]) > 50
+```
+(Alerts if more than 50 tasks are accumulating in 5 minutes — tune per workload)
+
+4) Sudden spike in task duration (example if you export avg duration)
+
+Expression (if metric exported as `fileprocessing_threadpool_avg_task_duration_seconds`):
+```
+fileprocessing_threadpool_avg_task_duration_seconds > 10
+```
+
+Dashboard design tips
+
+* Use a short (1s–5s) panel refresh rate for the thread pool dashboards when debugging, but increase to 10s–30s for normal operation to reduce load.
+* Add thresholds and colored regions to highlight warning and critical conditions.
+* Add a row showing current config values (core, max, queue capacity) as text or single stat panels — this helps correlate resizing events.
+* If possible, export config values as metrics (e.g., `fileprocessing_threadpool_core_size`) at service startup — this makes alerting and dashboards robust to config changes.
+* Correlate with application logs: include a log panel (Loki) or link to recent logs around resize events to debug why the pool resized.
+
+How to include the images in the repo README
+
+The images are already in `public/`. The markdown above references them relatively (e.g. `./public/1. Base State.png`). If your markdown renderer cannot resolve spaces in filenames you can either:
+
+* Rename files to remove spaces (recommended), or
+* URL encode spaces (`1.%20Base%20State.png`) in the image path.
 
 ---
 
@@ -492,7 +622,7 @@ MIT License — free to use and extend.
 ## **4. Metrics / Monitoring**
 
 * [x] Add per-operation metrics (e.g., processing duration per operation type)
-* [ ] Expose metrics via **Prometheus** or **Spring Actuator** (note: actuator endpoint conflict with gRPC)
+* [x] Expose metrics via **Prometheus** or **Spring Actuator** (note: actuator endpoint conflict with gRPC)
 * [ ] Track **success/failure rates** per workflow
 
 ---
@@ -593,7 +723,7 @@ MIT License — free to use and extend.
 
 ---
 
-## **Phase 4 — Monitoring, Metrics, and Observability**
+## **[DELIVERED] Phase 4 — Monitoring, Metrics, and Observability**
 
 **Goal:** Make the service observable and production-ready.
 

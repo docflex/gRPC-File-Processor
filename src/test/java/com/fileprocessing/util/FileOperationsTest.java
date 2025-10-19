@@ -134,7 +134,7 @@ class FileOperationsTest {
     }
 
     @Test
-    void compressFile_withValidFile_shouldCreateCompressedFile(@TempDir Path tempDir) throws IOException {
+    void compressFile_withValidFile_shouldCreateCompressedFile(@TempDir Path tempDir) throws IOException, InterruptedException {
         Path compressedFile = FileOperations.compressFile(validImageFile);
 
         assertTrue(Files.exists(compressedFile));

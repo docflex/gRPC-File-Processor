@@ -29,24 +29,35 @@ public final class ThreadPoolManager {
     public ThreadPoolManager(ThreadPoolProperties properties) {
         this.properties = properties;
 
+        log.info("Initializing ThreadPoolManager with coreSize={}, maxSize={}, queueCapacity={}, resizeThreshold={}, keepAliveSeconds={}, monitorIntervalSeconds={}",
+                properties.getCoreSize(), properties.getMaxSize(), properties.getQueueCapacity(), properties.getResizeThreshold(),
+                properties.getKeepAliveSeconds(), properties.getMonitorIntervalSeconds());
+
+        // Use a bounded queue if queueCapacity > 0, otherwise SynchronousQueue
+        BlockingQueue<Runnable> workQueue = properties.getQueueCapacity() > 0 ?
+                new LinkedBlockingQueue<>(properties.getQueueCapacity()) :
+                new SynchronousQueue<>();
+
         this.executor = new ThreadPoolExecutor(
                 properties.getCoreSize(),
                 properties.getMaxSize(),
                 properties.getKeepAliveSeconds(),
                 TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(properties.getQueueCapacity()),
+                workQueue,
                 new FileProcessingThreadFactory(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
-        executor.allowCoreThreadTimeOut(true);
+
+        // Keep core threads alive
+        executor.allowCoreThreadTimeOut(false);
 
         this.monitor = Executors.newSingleThreadScheduledExecutor(
                 r -> new Thread(r, "ThreadPoolMonitor")
         );
         monitor.scheduleAtFixedRate(this::adjustPoolSize,
-                properties.getMonitorIntervalSeconds(),
-                properties.getMonitorIntervalSeconds(),
-                TimeUnit.SECONDS
+                0,
+                100,
+                TimeUnit.MILLISECONDS
         );
     }
 
@@ -62,25 +73,50 @@ public final class ThreadPoolManager {
     }
 
     /**
-     * Get the underlying executor.
-     */
-    public ExecutorService getExecutor() {
-        return executor;
-    }
-
-    /**
-     * Get current queue size.
+     * Get current stats.
      */
     public int getQueueSize() {
         return executor.getQueue().size();
     }
 
-    /**
-     * Get the approximate number of active tasks.
-     */
     public int getActiveCount() {
         return executor.getActiveCount();
     }
+
+    public int getPoolSize() {
+        return executor.getPoolSize();
+    }
+
+    public int getCorePoolSize() {
+        return executor.getCorePoolSize();
+    }
+
+    public int getMaximumPoolSize() {
+        return executor.getMaximumPoolSize();
+    }
+
+    public double getUtilization() {
+        int max = executor.getMaximumPoolSize();
+        return max == 0 ? 0 : ((double) executor.getActiveCount() / max);
+    }
+
+    public ExecutorService getExecutor() {
+        return executor;
+    }
+
+    public int getLargestPoolSize() {
+        return executor.getLargestPoolSize();
+    }
+
+    public long getTaskCount() {
+        return executor.getTaskCount();
+    }
+
+    public long getCompletedTaskCount() {
+        return executor.getCompletedTaskCount();
+    }
+
+
 
     /**
      * Gracefully shutdown executor and monitor.
@@ -102,24 +138,32 @@ public final class ThreadPoolManager {
 
     /**
      * Adaptive resizing logic based on queue size.
+     * Ensures pool never drops below coreSize.
      */
     private void adjustPoolSize() {
+        int active = executor.getActiveCount();
+        int poolSize = executor.getPoolSize();
         int queueSize = executor.getQueue().size();
+        int coreSize = properties.getCoreSize();
+        int maxSize = properties.getMaxSize();
+        int resizeThreshold = properties.getResizeThreshold();
 
-        if (queueSize > properties.getResizeThreshold() &&
-                executor.getMaximumPoolSize() < properties.getMaxSize()) {
+        log.info("Active: {}, PoolSize: {}, Queue: {}", active, poolSize, queueSize);
 
-            int newMax = Math.min(properties.getMaxSize(), executor.getMaximumPoolSize() + 2);
+
+        // Increase pool size if queue is getting full
+        if (queueSize > resizeThreshold) {
+            int newMax = Math.min(maxSize, executor.getMaximumPoolSize() + 2);
             executor.setMaximumPoolSize(newMax);
-            executor.setCorePoolSize(newMax / 2);
+            executor.setCorePoolSize(Math.max(coreSize, newMax / 2));
             log.info("[ThreadPoolManager] Increased pool size to {}", newMax);
+        }
 
-        } else if (queueSize < properties.getResizeThreshold() / 2 &&
-                executor.getCorePoolSize() > properties.getCoreSize()) {
-
-            int newCore = Math.max(properties.getCoreSize(), executor.getCorePoolSize() - 1);
+        // Decrease pool size if queue is very low, but never below coreSize
+        else if (queueSize < resizeThreshold / 2 && executor.getCorePoolSize() > coreSize) {
+            int newCore = Math.max(coreSize, executor.getCorePoolSize() - 1);
             executor.setCorePoolSize(newCore);
-            executor.setMaximumPoolSize(newCore * 2);
+            executor.setMaximumPoolSize(Math.max(newCore, executor.getMaximumPoolSize() - 1));
             log.info("[ThreadPoolManager] Decreased pool size to {}", newCore);
         }
     }
@@ -132,7 +176,7 @@ public final class ThreadPoolManager {
 
         @Override
         public Thread newThread(@NotNull Runnable r) {
-            Thread t = new Thread(r, "file-task-thread-" + counter.incrementAndGet());
+            Thread t = new Thread(r, "task-thread-" + counter.incrementAndGet());
             t.setDaemon(false);
             return t;
         }
